@@ -6,10 +6,12 @@ console = Console()
 
 # Configuracoes Gerais
 LLAMA_API_URL = os.environ.get("LLAMA_API_URL", "http://localhost:8080/v1/chat/completions")
+EMBEDDINGS_API_URL = os.environ.get("EMBEDDINGS_API_URL", LLAMA_API_URL.replace("/chat/completions", "/embeddings"))
 WORKSPACE_DIR = os.getcwd()
 MEMORY_DIR = os.path.join(WORKSPACE_DIR, ".duck", "memory")
+EMBEDDING_CACHE_FILE = os.path.join(MEMORY_DIR, "embeddings_cache.json")
 
-MAX_CONTEXT_TOKENS = 24000
+MAX_CONTEXT_TOKENS = 18000
 COMPRESSION_THRESHOLD = 12000
 
 # Garante a existencia da pasta de memoria persistente
@@ -44,4 +46,7 @@ example shell command
 [CMD:search_workspace query="search query"]
 [/CMD]
 
-Note: read_file can read a maximum of 100 lines per call. Format matches must be exact."""
+Note: read_file can read a maximum of 100 lines per call. Format matches must be exact.
+
+CRITICAL REFLECTION RULE: Before executing any tool, write a brief single-line thought/reflection explaining what you have tried previously and why this next command is different and necessary.
+CRITICAL LOOP PREVENTION: If a search or tool command returns no relevant results, empty results, or results containing only build/cache files (like `.next/`, `node_modules/`), you MUST change your search query, use a different tool, or read a different file. NEVER repeat the same command or query consecutively."""
