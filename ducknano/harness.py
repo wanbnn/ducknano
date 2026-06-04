@@ -230,7 +230,7 @@ class LlamaHarness:
             console.print(f"[red]Error saving trajectory: {e}[/red]")
 
     def step(self, user_input: str, is_recursive: bool = False, depth: int = 0, original_query: str = ""):
-        if depth >= 10:
+        if depth >= 120:
             console.print("[yellow]Safe limit of recursion reached. Halted execution to prevent infinite loop.[/yellow]")
             return
 
