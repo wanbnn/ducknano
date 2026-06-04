@@ -11,8 +11,8 @@ WORKSPACE_DIR = os.getcwd()
 MEMORY_DIR = os.path.join(WORKSPACE_DIR, ".duck", "memory")
 EMBEDDING_CACHE_FILE = os.path.join(MEMORY_DIR, "embeddings_cache.json")
 
-MAX_CONTEXT_TOKENS = 80000
-COMPRESSION_THRESHOLD = 60000
+MAX_CONTEXT_TOKENS = os.environ.get("MAX_CONTEXT_TOKENS", "80000")
+COMPRESSION_THRESHOLD = os.environ.get("COMPRESSION_THRESHOLD", "60000")
 
 # Garante a existencia da pasta de memoria persistente
 os.makedirs(MEMORY_DIR, exist_ok=True)
