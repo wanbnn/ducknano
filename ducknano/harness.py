@@ -93,7 +93,7 @@ class LlamaHarness:
 
     def init_history(self, clear_persisted: bool = False):
         """Reinicializa o histórico em memória com os few-shot anchors.
-        Se clear_persisted=True, apaga também o histórico salvo em disco.
+        Se clear_persisted=True, apaga também o histórico salv em disco.
         """
         # Few-Shot prompts demonstrating on-demand tool usage
         self.history = [
@@ -191,7 +191,13 @@ class LlamaHarness:
             if total_tokens == 0:
                 total_tokens = (len(reasoning_buf) + len(content_buf)) // 4
 
-            return content_buf, total_tokens
+            # --- ALTERAÇÃO AQUI: Combinar o pensamento com o conteúdo final ---
+            full_response = ""
+            if reasoning_buf:
+                full_response += f"<thought>\n{reasoning_buf}\n</thought>\n"
+            full_response += content_buf
+
+            return full_response, total_tokens
         except Exception as e:
             console.print(f"[bold red]Erro ao conectar com llama.cpp: {escape(str(e))}[/bold red]")
             return "", 0
@@ -425,4 +431,3 @@ def normalize_command(cmd: str) -> str:
     # Lowercase to avoid case-insensitive duplicates on Windows
     normalized = normalized.lower()
     return normalized
-
