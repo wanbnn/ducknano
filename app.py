@@ -2,6 +2,7 @@
 import os
 import time
 import sys
+import argparse
 from rich.panel import Panel
 from rich.markup import escape
 from rich.live import Live
@@ -10,13 +11,13 @@ from rich.text import Text
 from rich.align import Align
 from rich import box
 
-from ducknano.config import console
+from ducknano.config import console, WORKSPACE_DIR
 from ducknano.harness import LlamaHarness
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
-def show_intro():
+def show_intro(hist_enabled: bool = False):
     clear_screen()
     
     banner_lines = [
@@ -75,6 +76,17 @@ def show_intro():
     info_table = Table(show_header=False, box=None, padding=(0, 2))
     info_table.add_row("[bold #00ffcc]Workspace:[/bold #00ffcc]", f"[white]{os.getcwd()}[/white]")
     info_table.add_row("[bold #00ffcc]LLM API:[/bold #00ffcc]", f"[white]{os.environ.get('LLAMA_API_URL', 'http://localhost:8080/v1')}[/white]")
+    if hist_enabled:
+        hist_path = os.path.join(WORKSPACE_DIR, ".duck", "history", "session.json")
+        info_table.add_row(
+            "[bold #00ffcc]History:[/bold #00ffcc]",
+            f"[bold #00ff99]ON[/bold #00ff99] [dim]({hist_path})[/dim]"
+        )
+    else:
+        info_table.add_row(
+            "[bold #00ffcc]History:[/bold #00ffcc]",
+            "[dim #888888]OFF (API-managed)[/dim #888888]"
+        )
     
     console.print(Align.center(Panel(
         info_table,
@@ -86,8 +98,22 @@ def show_intro():
     console.print()
 
 def main():
-    show_intro()
-    harness = LlamaHarness()
+    parser = argparse.ArgumentParser(
+        description="DuckNano — Mini Agent",
+        add_help=True
+    )
+    parser.add_argument(
+        "--hist",
+        choices=["on", "off"],
+        default="off",
+        metavar="on|off",
+        help="Ativa o gerenciador de histórico persistente de chat (padrão: off)"
+    )
+    args = parser.parse_args()
+    hist_enabled = args.hist == "on"
+
+    show_intro(hist_enabled=hist_enabled)
+    harness = LlamaHarness(hist_enabled=hist_enabled)
     
     while True:
         try:
@@ -98,8 +124,8 @@ def main():
                 console.print("[yellow]Saindo...[/yellow]")
                 break
             if user_input.lower() in ("clear", "clear_session", "clear_history", "limpar"):
-                harness.init_history()
-                show_intro()
+                harness.init_history(clear_persisted=True)
+                show_intro(hist_enabled=hist_enabled)
                 console.print("[green]Contexto ativo reiniciado e tela limpa.[/green]\n")
                 continue
             

@@ -39,9 +39,17 @@ def read_file(path: str, start_line: int = 1, end_line: int = 100) -> str:
         return f"Error reading file {path}: {e}"
 
 def execute_bash(cmd: str) -> str:
+    import platform
     console.print(f"[bold blue]Executando comando:[/bold blue] {cmd}")
     try:
-        result = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=30)
+        if platform.system() == "Windows":
+            # Use PowerShell on Windows for unix-compatible commands (mkdir -p, ls, cat, etc.)
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
+                text=True, capture_output=True, timeout=30
+            )
+        else:
+            result = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=30)
         stdout = result.stdout[:2000]
         stderr = result.stderr[:2000]
         

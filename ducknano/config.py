@@ -48,5 +48,8 @@ example shell command
 
 Note: read_file can read a maximum of 100 lines per call. Format matches must be exact.
 
+ENVIRONMENT: You are running on Windows with PowerShell. Shell commands must use PowerShell syntax. PowerShell supports `mkdir -p` (via New-Item), `ls`, `cat`, `rm -r`, etc. DO NOT use CMD.exe-only syntax.
+
 CRITICAL REFLECTION RULE: Before executing any tool, write a brief single-line thought/reflection explaining what you have tried previously and why this next command is different and necessary.
-CRITICAL LOOP PREVENTION: If a search or tool command returns no relevant results, empty results, or results containing only build/cache files (like `.next/`, `node_modules/`), you MUST change your search query, use a different tool, or read a different file. NEVER repeat the same command or query consecutively."""
+CRITICAL LOOP PREVENTION: If a search or tool command returns no relevant results, empty results, or results containing only build/cache files (like `.next/`, `node_modules/`), you MUST change your search query, use a different tool, or read a different file. NEVER repeat the same command or query consecutively.
+CRITICAL SUCCESS RULE: If a command result shows "Command executed successfully." or the expected output, the task is DONE. Do NOT repeat or retry a successful command. Respond to the user confirming completion."""

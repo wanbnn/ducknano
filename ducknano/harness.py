@@ -17,15 +17,37 @@ from ducknano.config import (
 from ducknano.rag import LocalTrigramIndex
 from ducknano.memory import MemoryManager
 from ducknano.tools import parse_and_execute_commands, preprocess_response
+from ducknano.history import HistoryManager
 
 class LlamaHarness:
-    def __init__(self):
+    def __init__(self, hist_enabled: bool = False):
         self.history: List[Dict[str, str]] = []
         self.workspace_index = LocalTrigramIndex(WORKSPACE_DIR)
         self.memory_manager = MemoryManager()
         self.total_tokens_used = 0
+        self.hist_enabled = hist_enabled
+
+        # Gerenciador de histórico persistente
+        history_path = os.path.join(WORKSPACE_DIR, ".duck", "history", "session.json")
+        self.history_manager = HistoryManager(history_path)
+
+        # Auto-detect LLM model name
+        self.model_name = os.environ.get("MODEL_NAME")
+        if not self.model_name:
+            self.model_name = self._detect_llm_model()
+
         self.init_history()
-        
+
+        # Se o modo de histórico está ativo, restaurar conversa anterior
+        if self.hist_enabled and self.history_manager.exists():
+            restored = self.history_manager.load()
+            if restored:
+                self.history.extend(restored)
+                console.print(
+                    f"[bold #00ffcc]📂 Histórico restaurado:[/bold #00ffcc] "
+                    f"[dim]{len(restored)} mensagens carregadas de sessão anterior.[/dim]"
+                )
+
         # Loop tracking and trajectory logging setup
         self.recent_commands = []
         self.consecutive_repeats = 0
@@ -34,13 +56,29 @@ class LlamaHarness:
         self.session_timestamp = int(time.time())
         self.trajectory_log = []
 
+    def _detect_llm_model(self) -> str:
+        try:
+            models_url = LLAMA_API_URL.replace("/chat/completions", "/models")
+            r = requests.get(models_url, timeout=5)
+            if r.status_code == 200:
+                data = r.json().get("data", [])
+                for m in data:
+                    m_id = m.get("id", "")
+                    if "embed" not in m_id.lower():
+                        return m_id
+                if data:
+                    return data[0].get("id", "qwopus3.5-9b-coder")
+        except Exception:
+            pass
+        return "qwopus3.5-9b-coder"
 
-    def init_history(self):
+    def init_history(self, clear_persisted: bool = False):
+        """Reinicializa o histórico em memória com os few-shot anchors.
+        Se clear_persisted=True, apaga também o histórico salvo em disco.
+        """
         # Few-Shot prompts demonstrating on-demand tool usage
         self.history = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": "Hello, how are you?"},
-            {"role": "assistant", "content": "Hello! Everything is great, and you? How can I help with your development today?"},
             {"role": "user", "content": "Crie um script de soma em python e teste-o."},
             {"role": "assistant", "content": '[CMD:write_file path="sum.py"]\ndef soma(a, b):\n    return a + b\n[/CMD]\nCriando o arquivo sum.py...'},
             {"role": "user", "content": "Current Workspace Files: [sum.py]\n\nResults of executed commands:\nFile created/updated successfully: sum.py"},
@@ -48,9 +86,12 @@ class LlamaHarness:
             {"role": "user", "content": "Current Workspace Files: [sum.py]\n\nResults of executed commands:\nSTDOUT:\nTeste OK"},
             {"role": "assistant", "content": "O script `sum.py` foi criado e testado com sucesso no workspace."}
         ]
+        if clear_persisted:
+            self.history_manager.clear()
 
     def query_model(self, prompt_messages: List[Dict[str, str]], temperature: float = 0.1) -> Tuple[str, int]:
         payload = {
+            "model": self.model_name,
             "messages": prompt_messages,
             "temperature": temperature,
             "stream": True
@@ -188,7 +229,7 @@ class LlamaHarness:
         except Exception as e:
             console.print(f"[red]Error saving trajectory: {e}[/red]")
 
-    def step(self, user_input: str, is_recursive: bool = False, depth: int = 0):
+    def step(self, user_input: str, is_recursive: bool = False, depth: int = 0, original_query: str = ""):
         if depth >= 10:
             console.print("[yellow]Safe limit of recursion reached. Halted execution to prevent infinite loop.[/yellow]")
             return
@@ -196,6 +237,7 @@ class LlamaHarness:
         if not is_recursive:
             self.recent_commands = []
             self.consecutive_repeats = 0
+            original_query = user_input  # Salva a query original antes de qualquer modificação
             
             # Inject active workspace files if any exist at the start of the session
             workspace_files = self.workspace_index.files
@@ -317,6 +359,10 @@ class LlamaHarness:
         self.trajectory_log.append(step_record)
         self.save_trajectory()
 
+        # Persistir histórico em disco se modo --hist estiver ativo
+        if self.hist_enabled:
+            self.history_manager.save(self.history)
+
         if cmd_results:
             results_str = "\n".join(cmd_results)
             console.print(Panel(
@@ -329,12 +375,15 @@ class LlamaHarness:
             # Inject active workspace files if any exist
             workspace_files = self.workspace_index.files
             files_str = ", ".join(workspace_files) if workspace_files else "None"
+            # Inclui a query original para que o modelo não perca o contexto do que foi pedido
+            original_query_reminder = f"[Contexto: o usuário perguntou originalmente: {original_query}]\n\n" if original_query else ""
             feedback_msg = (
+                f"{original_query_reminder}"
                 f"Current Workspace Files: [{files_str}]\n\n"
                 f"Results of executed commands:\n{results_str}"
             )
             
-            self.step(feedback_msg, is_recursive=True, depth=depth+1)
+            self.step(feedback_msg, is_recursive=True, depth=depth+1, original_query=original_query)
 
 
 def extract_commands(text: str) -> List[str]:
@@ -350,5 +399,10 @@ def extract_commands(text: str) -> List[str]:
 
 def normalize_command(cmd: str) -> str:
     # Remove all whitespace and newlines for comparison
-    return re.sub(r'\s+', '', cmd)
+    normalized = re.sub(r'\s+', '', cmd)
+    # Normalize path separators: treat forward and back slashes as equivalent
+    normalized = normalized.replace('\\', '/')
+    # Lowercase to avoid case-insensitive duplicates on Windows
+    normalized = normalized.lower()
+    return normalized
 

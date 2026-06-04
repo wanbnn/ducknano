@@ -16,4 +16,4 @@ if errorlevel 1 (
 
 python -m pip install requests rich
 
-python "%APP_DIR%\app.py"
+python "%APP_DIR%\app.py" %*

@@ -50,4 +50,4 @@ if (-not (Test-Path $PythonExe)) {
 & $PythonExe -m pip install requests rich
 
 # Executa aplicação
-& $PythonExe (Join-Path $AppDir "app.py")
+& $PythonExe (Join-Path $AppDir "app.py") @args
