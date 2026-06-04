@@ -57,6 +57,12 @@ class LlamaHarness:
         self.trajectory_log = []
 
     def _detect_llm_model(self) -> str:
+        # 1. Tenta usar a variável de ambiente se estiver configurada e não for vazia
+        env_model = os.environ.get("MODEL_NAME", "").strip()
+        if env_model:
+            return env_model
+
+        # 2. Caso contrário, tenta consultar o endpoint da API para autodetecção
         try:
             models_url = LLAMA_API_URL.replace("/chat/completions", "/models")
             r = requests.get(models_url, timeout=5)
@@ -64,12 +70,25 @@ class LlamaHarness:
                 data = r.json().get("data", [])
                 for m in data:
                     m_id = m.get("id", "")
-                    if "embed" not in m_id.lower():
+                    if not m_id:
+                        continue
+                    
+                    # Filtra IDs que contenham palavras comuns de modelos de embedding/busca
+                    is_embedding = any(
+                        term in m_id.lower() 
+                        for term in ["embed", "similarity", "rerank", "vector"]
+                    )
+                    
+                    if not is_embedding:
                         return m_id
+                
+                # Fallback caso haja dados mas todos tenham sido filtrados (improvável)
                 if data:
                     return data[0].get("id", "qwopus3.5-9b-coder")
         except Exception:
             pass
+        
+        # 3. Fallback de segurança se a API estiver inacessível ou sem modelos cadastrados
         return "qwopus3.5-9b-coder"
 
     def init_history(self, clear_persisted: bool = False):
@@ -84,7 +103,8 @@ class LlamaHarness:
             {"role": "user", "content": "Current Workspace Files: [sum.py]\n\nResults of executed commands:\nFile created/updated successfully: sum.py"},
             {"role": "assistant", "content": '[CMD:run_bash]\npython -c "import sum; assert sum.soma(2, 3) == 5; print(\'Teste OK\')"\n[/CMD]\nExecutando teste no terminal...'},
             {"role": "user", "content": "Current Workspace Files: [sum.py]\n\nResults of executed commands:\nSTDOUT:\nTeste OK"},
-            {"role": "assistant", "content": "O script `sum.py` foi criado e testado com sucesso no workspace."}
+            {"role": "assistant", "content": "O script `sum.py` foi criado e testado com sucesso no workspace."},
+            {"role": "user", "content": "Ok, agora que entendeu os comandos, vamos começar do inicio como se fosse uma nova sessão."}
         ]
         if clear_persisted:
             self.history_manager.clear()

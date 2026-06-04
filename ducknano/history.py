@@ -13,7 +13,7 @@ import os
 from typing import List, Dict
 
 # Quantas mensagens (user+assistant) restaurar no máximo ao retomar sessão
-MAX_RESTORE_MSGS = 3
+MAX_RESTORE_MSGS = 4
 
 
 class HistoryManager:
