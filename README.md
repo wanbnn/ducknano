@@ -1,9 +1,12 @@
 # 🦆 DuckNano
 
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org)
+[![License](https://img.shields.io/badge/License-MIT-orange)]()
+[![Size](https://img.shields.io/badge/SML-Self--Hosted-green?logo=ollama)]()
+
 ```Powershell
 irm https://raw.githubusercontent.com/wanbnn/ducknano/main/install.ps1 | iex
 ```
-
 
 > **Um agente de desenvolvimento minimalista e poderoso rodando 100% local via llama.cpp**
 
