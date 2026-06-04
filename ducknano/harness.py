@@ -8,6 +8,7 @@ from typing import List, Dict, Tuple
 from rich.panel import Panel
 from rich.text import Text
 from rich.markup import escape
+from rich.live import Live
 from rich import box
 
 from ducknano.config import (
@@ -40,32 +41,96 @@ class LlamaHarness:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": "Hello, how are you?"},
             {"role": "assistant", "content": "Hello! Everything is great, and you? How can I help with your development today?"},
-            {"role": "user", "content": "Do you remember which test script we created earlier?"},
-            {"role": "assistant", "content": '[CMD:recall_memory query="test script"]\n[/CMD]\nRecalling memory...'},
-            {"role": "user", "content": "Results of executed commands:\nRecalled memory:\n[USER]: Create the test script test_permissions.py.\n[ASSISTANT]: Script created successfully."},
-            {"role": "assistant", "content": "Yes, we created the script `test_permissions.py` to test the TrigramIndex earlier."},
-            {"role": "user", "content": "Show me what is in the file test_permissions.py."},
-            {"role": "assistant", "content": '[CMD:read_file path="test_permissions.py" start_line=1 end_line=100][/CMD]\nReading file...'},
-            {"role": "user", "content": "Results of executed commands:\nLines 1 to 1 of 1 in test_permissions.py:\n001: print(\"Test OK\")"},
-            {"role": "assistant", "content": "The file `test_permissions.py` only contains `print(\"Test OK\")`."}
+            {"role": "user", "content": "Crie um script de soma em python e teste-o."},
+            {"role": "assistant", "content": '[CMD:write_file path="sum.py"]\ndef soma(a, b):\n    return a + b\n[/CMD]\nCriando o arquivo sum.py...'},
+            {"role": "user", "content": "Current Workspace Files: [sum.py]\n\nResults of executed commands:\nFile created/updated successfully: sum.py"},
+            {"role": "assistant", "content": '[CMD:run_bash]\npython -c "import sum; assert sum.soma(2, 3) == 5; print(\'Teste OK\')"\n[/CMD]\nExecutando teste no terminal...'},
+            {"role": "user", "content": "Current Workspace Files: [sum.py]\n\nResults of executed commands:\nSTDOUT:\nTeste OK"},
+            {"role": "assistant", "content": "O script `sum.py` foi criado e testado com sucesso no workspace."}
         ]
 
     def query_model(self, prompt_messages: List[Dict[str, str]], temperature: float = 0.1) -> Tuple[str, int]:
         payload = {
             "messages": prompt_messages,
             "temperature": temperature,
-            "stream": False
+            "stream": True
         }
         try:
-            response = requests.post(LLAMA_API_URL, json=payload, timeout=1240)
+            response = requests.post(LLAMA_API_URL, json=payload, timeout=1240, stream=True)
             response.raise_for_status()
-            data = response.json()
-            
-            content = data["choices"][0]["message"]["content"]
-            usage = data.get("usage", {})
-            total_tokens = usage.get("total_tokens", len(content) // 4)
-            
-            return content, total_tokens
+
+            reasoning_buf = ""
+            content_buf = ""
+            total_tokens = 0
+            in_reasoning = False
+
+            # --- Thinking panel (streams live) ---
+            thinking_text = Text("", style="dim #00cccc")
+            thinking_panel = Panel(
+                thinking_text,
+                title="[bold dim #00cccc]🧠 Thinking[/bold dim #00cccc]",
+                border_style="dim #00cccc",
+                box=box.ROUNDED,
+            )
+
+            # --- Response panel (streams live) ---
+            response_text_obj = Text("", style="white")
+            response_panel = Panel(
+                response_text_obj,
+                title="[bold #00ffcc]💬 Model[/bold #00ffcc]",
+                border_style="#00ffcc",
+                box=box.ROUNDED,
+            )
+
+            # We start with the thinking panel; switch to response panel once
+            # actual content starts arriving.
+            active_panel = thinking_panel
+            showed_response_panel = False
+
+            with Live(active_panel, console=console, refresh_per_second=15) as live:
+                for raw_line in response.iter_lines():
+                    if not raw_line:
+                        continue
+                    line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[len("data: "):].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+
+                    choice = chunk.get("choices", [{}])[0]
+                    delta = choice.get("delta", {})
+
+                    # Accumulate usage if provided in the final chunk
+                    if "usage" in chunk:
+                        total_tokens = chunk["usage"].get("total_tokens", total_tokens)
+
+                    r_delta = delta.get("reasoning_content") or ""
+                    c_delta = delta.get("content") or ""
+
+                    if r_delta:
+                        reasoning_buf += r_delta
+                        thinking_text.append(r_delta)
+                        live.update(thinking_panel)
+
+                    if c_delta:
+                        if not showed_response_panel:
+                            # Switch to response panel once content starts
+                            showed_response_panel = True
+                            live.update(response_panel)
+                        content_buf += c_delta
+                        response_text_obj.append(c_delta)
+                        live.update(response_panel)
+
+            # If no tokens reported via streaming, estimate from content length
+            if total_tokens == 0:
+                total_tokens = (len(reasoning_buf) + len(content_buf)) // 4
+
+            return content_buf, total_tokens
         except Exception as e:
             console.print(f"[bold red]Erro ao conectar com llama.cpp: {escape(str(e))}[/bold red]")
             return "", 0
@@ -123,10 +188,20 @@ class LlamaHarness:
         except Exception as e:
             console.print(f"[red]Error saving trajectory: {e}[/red]")
 
-    def step(self, user_input: str, is_recursive: bool = False):
+    def step(self, user_input: str, is_recursive: bool = False, depth: int = 0):
+        if depth >= 10:
+            console.print("[yellow]Safe limit of recursion reached. Halted execution to prevent infinite loop.[/yellow]")
+            return
+
         if not is_recursive:
             self.recent_commands = []
             self.consecutive_repeats = 0
+            
+            # Inject active workspace files if any exist at the start of the session
+            workspace_files = self.workspace_index.files
+            if workspace_files:
+                files_str = ", ".join(workspace_files)
+                user_input = f"Current Workspace Files: [{files_str}]\n\nUser Query: {user_input}"
 
         self.history.append({"role": "user", "content": user_input})
 
@@ -153,15 +228,20 @@ class LlamaHarness:
                 # Format recent commands to explicitly tell the model what to avoid
                 recent_cmds_str = ", ".join([f"'{c}'" for c in self.recent_commands[-5:]]) if self.recent_commands else "None"
                 warning_msg = (
-                    f"WARNING: You are repeating commands. Your previous actions did not yield new information. "
-                    f"DO NOT execute any of these recent commands again: [{recent_cmds_str}]. "
-                    "You must change your query, search for different terms, read a different file, or use a different tool."
+                    f"[SYSTEM WARNING / AVISO DO SISTEMA]\n"
+                    f"You are repeating commands! / Você está repetindo comandos!\n"
+                    f"DO NOT execute any of these recent commands again: / NÃO execute nenhum destes comandos recentes novamente:\n"
+                    f"[{recent_cmds_str}]\n"
+                    f"You must change your strategy, use different search terms, read a different file, or use a different tool.\n"
+                    f"Você deve mudar sua estratégia, usar termos de busca diferentes, ler um arquivo diferente ou usar outra ferramenta.\n"
+                    f"----------------------------------------\n"
                 )
-                active_history.append({"role": "system", "content": warning_msg})
+                if active_history:
+                    last_msg = active_history[-1].copy()
+                    last_msg["content"] = warning_msg + last_msg["content"]
+                    active_history[-1] = last_msg
 
-            # Spinner loader enquanto o modelo pensa
-            with console.status("[bold #00ffcc]Evaluating...[/bold #00ffcc]", spinner="dots"):
-                response_text, tokens_used = self.query_model(active_history, temperature=temp)
+            response_text, tokens_used = self.query_model(active_history, temperature=temp)
             self.total_tokens_used = tokens_used
 
             corrected_response = preprocess_response(response_text)
@@ -213,13 +293,8 @@ class LlamaHarness:
                 self.recent_commands = (self.recent_commands + current_commands)[-10:]
 
         # Commit final accepted step to history and trajectory
-        # Painel da resposta do assistente
-        console.print(Panel(
-            Text(response_text, style="white"),
-            title="[bold #00ffcc]💬 Model[/bold #00ffcc]",
-            border_style="#00ffcc",
-            box=box.ROUNDED
-        ))
+        # The streaming output already rendered the response panel live;
+        # no need to reprint it here.
         
         # Barra visual de tokens do contexto
         pct = min(1.0, self.total_tokens_used / MAX_CONTEXT_TOKENS)
@@ -250,7 +325,16 @@ class LlamaHarness:
                 border_style="#ff55ff",
                 box=box.ROUNDED
             ))
-            self.step(f"Results of executed commands:\n{results_str}", is_recursive=True)
+            
+            # Inject active workspace files if any exist
+            workspace_files = self.workspace_index.files
+            files_str = ", ".join(workspace_files) if workspace_files else "None"
+            feedback_msg = (
+                f"Current Workspace Files: [{files_str}]\n\n"
+                f"Results of executed commands:\n{results_str}"
+            )
+            
+            self.step(feedback_msg, is_recursive=True, depth=depth+1)
 
 
 def extract_commands(text: str) -> List[str]:

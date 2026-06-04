@@ -79,6 +79,7 @@ class LocalTrigramIndex:
         self.embedding_mode = None
         self.native_embedding_url = ""
         self.embeddings_cache = {}
+        self.embedding_model_name = "any"
         
         self.rebuild_index()
 
@@ -91,15 +92,32 @@ class LocalTrigramIndex:
         
         # 1. Try OAI endpoint first
         try:
+            # Find a real embedding model name to probe
+            model_name = "any"
+            try:
+                models_url = LLAMA_API_URL.replace("/chat/completions", "/models")
+                r = requests.get(models_url, timeout=5)
+                if r.status_code == 200:
+                    for m in r.json().get("data", []):
+                        m_id = m.get("id", "")
+                        if "embed" in m_id.lower():
+                            model_name = m_id
+                            break
+                    if model_name == "any" and r.json().get("data"):
+                        model_name = r.json()["data"][0].get("id", "any")
+            except Exception:
+                pass
+
             response = requests.post(
                 EMBEDDINGS_API_URL,
-                json={"input": "probe", "model": "any"},
+                json={"input": "probe", "model": model_name},
                 timeout=10
             )
             if response.status_code == 200:
                 data = response.json()
                 if "data" in data and len(data["data"]) > 0 and "embedding" in data["data"][0]:
                     self.embedding_mode = 'oai'
+                    self.embedding_model_name = model_name
                     return True
         except Exception:
             pass
@@ -149,7 +167,7 @@ class LocalTrigramIndex:
             if self.embedding_mode == 'oai':
                 response = requests.post(
                     EMBEDDINGS_API_URL,
-                    json={"input": text, "model": "any"},
+                    json={"input": text, "model": self.embedding_model_name},
                     timeout=60
                 )
                 if response.status_code == 200:
