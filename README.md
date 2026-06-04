@@ -1,5 +1,10 @@
 # 🦆 DuckNano
 
+```Powershell
+irm https://raw.githubusercontent.com/wanbnn/ducknano/main/install.ps1 | iex
+```
+
+
 > **Um agente de desenvolvimento minimalista e poderoso rodando 100% local via llama.cpp**
 
 DuckNano é um agente de IA para terminal que se conecta a qualquer servidor compatível com a API OpenAI (como `llama.cpp`, `LM Studio` ou `Ollama`). Ele possui memória persistente via RAG local, compressão automática de contexto, e um conjunto de ferramentas integradas para ler, escrever, editar arquivos e executar comandos shell — tudo direto no seu workspace, sem depender de nenhuma API externa paga.
