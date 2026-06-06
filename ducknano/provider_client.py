@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -60,15 +61,31 @@ class ProviderClient:
     def get_model(self, model_id: str) -> Dict[str, Any]:
         return self.request_json("GET", f"/models/{quote(model_id, safe='')}", timeout=20)
 
-    def chat_completions(self, payload: dict, *, stream: bool = True, timeout: int = 1240):
-        response = requests.post(
-            self.endpoint("/chat/completions"),
-            headers=self.json_headers(),
-            json=payload,
-            timeout=timeout,
-            stream=stream,
-        )
-        return response
+    def chat_completions(self, payload: dict, *, stream: bool = True, timeout: int = 1240, retries: int = 2):
+        last_error = None
+        for attempt in range(retries + 1):
+            try:
+                response = requests.post(
+                    self.endpoint("/chat/completions"),
+                    headers=self.json_headers(),
+                    json=payload,
+                    timeout=timeout,
+                    stream=stream,
+                )
+                if response.status_code >= 500 and attempt < retries:
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                return response
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.ChunkedEncodingError,
+            ) as e:
+                last_error = e
+                if attempt >= retries:
+                    break
+                time.sleep(1.5 * (attempt + 1))
+        raise ProviderError(f"chat/completions connection failed after {retries + 1} attempts: {last_error}")
 
     def embeddings(self, input_text: str, model: Optional[str] = None, *, timeout: int = 120) -> Dict[str, Any]:
         payload = {

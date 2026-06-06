@@ -2,6 +2,8 @@
 import unittest
 from unittest.mock import Mock, patch
 
+import requests
+
 from ducknano.provider_client import ProviderClient
 
 
@@ -30,6 +32,20 @@ class ProviderClientTests(unittest.TestCase):
         client = ProviderClient()
         self.assertEqual(client.model_ids(base_url="https://example.com/v1", api_key="k"), ["a-model", "z-model"])
         request_mock.assert_called_once()
+
+    @patch("ducknano.provider_client.time.sleep")
+    @patch("ducknano.provider_client.requests.post")
+    def test_chat_completions_retries_connection_error(self, post_mock, sleep_mock):
+        response = Mock()
+        response.status_code = 200
+        post_mock.side_effect = [requests.ConnectionError("drop"), response]
+
+        client = ProviderClient()
+        result = client.chat_completions({"model": "m", "messages": []}, retries=1)
+
+        self.assertIs(result, response)
+        self.assertEqual(post_mock.call_count, 2)
+        sleep_mock.assert_called_once()
 
 
 if __name__ == "__main__":

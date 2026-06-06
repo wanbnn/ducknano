@@ -61,6 +61,23 @@ class LlamaHarness:
         self.model_name = PROVIDER_CONFIG.get("model") or os.environ.get("MODEL_NAME") or self._detect_llm_model()
         self.workspace_index.rebuild_index()
 
+    def _recovery_history(self) -> List[Dict[str, str]]:
+        if not self.history:
+            return []
+        system_messages = [m for m in self.history[:3] if m.get("role") == "system"]
+        recent_messages = self.history[-10:]
+        recovery = system_messages + [m for m in recent_messages if m not in system_messages]
+        recovery.append({
+            "role": "user",
+            "content": (
+                "[SYSTEM RECOVERY]\n"
+                "The previous provider request failed before the task finished. "
+                "Continue from the last successful action. Do not restart the task, "
+                "do not repeat successful commands, and use smaller, valid command blocks."
+            )
+        })
+        return recovery
+
     def _detect_llm_model(self) -> str:
         # 1. Tenta usar a variável de ambiente se estiver configurada e não for vazia
         env_model = os.environ.get("MODEL_NAME", "").strip()
@@ -111,7 +128,7 @@ class LlamaHarness:
         if clear_persisted:
             self.history_manager.clear()
 
-    def query_model(self, prompt_messages: List[Dict[str, str]], temperature: float = None) -> Tuple[str, int]:
+    def query_model(self, prompt_messages: List[Dict[str, str]], temperature: float = None) -> Tuple[str, int, bool]:
         payload = {
             "model": self.model_name,
             "messages": prompt_messages,
@@ -120,12 +137,10 @@ class LlamaHarness:
         if temperature is not None:
             payload["temperature"] = temperature
         try:
-            response = provider_client.chat_completions(payload, stream=True, timeout=1240)
+            response = provider_client.chat_completions(payload, stream=True, timeout=1240, retries=2)
             if response.status_code >= 400 and "temperature" in payload:
-                error_text = response.text.lower()
-                if "temperature" in error_text or "unsupported" in error_text:
-                    payload.pop("temperature", None)
-                    response = provider_client.chat_completions(payload, stream=True, timeout=1240)
+                payload.pop("temperature", None)
+                response = provider_client.chat_completions(payload, stream=True, timeout=1240, retries=2)
             response.raise_for_status()
 
             reasoning_buf = ""
@@ -209,10 +224,11 @@ class LlamaHarness:
                 full_response += f"<thought>\n{reasoning_buf}\n</thought>\n"
             full_response += content_buf
 
-            return full_response, total_tokens
+            return full_response, total_tokens, False
         except Exception as e:
-            console.print(f"[bold red]Erro ao conectar com provider OpenAI-compatible: {escape(str(e))}[/bold red]")
-            return "", 0
+            error_msg = f"Erro ao conectar com provider OpenAI-compatible: {escape(str(e))}"
+            console.print(f"[bold red]{error_msg}[/bold red]")
+            return error_msg, self.total_tokens_used, True
 
     def compress_context(self):
         """
@@ -245,7 +261,9 @@ class LlamaHarness:
             {"role": "user", "content": "\n".join(conversation_log) + f"\n\n{summary_prompt}"}
         ]
         
-        summary_content, _ = self.query_model(compression_messages)
+        summary_content, _, failed = self.query_model(compression_messages)
+        if failed:
+            summary_content = "Context compression failed because the provider connection was interrupted."
         
         # 5. Reconstrói o historico preservando a ancoragem (0 a 10), injetando o resumo,
         # e recolocando a pergunta atual do usuario de forma intacta no final do prompt
@@ -322,8 +340,25 @@ class LlamaHarness:
                     last_msg["content"] = warning_msg + last_msg["content"]
                     active_history[-1] = last_msg
 
-            response_text, tokens_used = self.query_model(active_history, temperature=temp)
-            self.total_tokens_used = tokens_used
+            response_text, tokens_used, provider_failed = self.query_model(active_history, temperature=temp)
+            if tokens_used:
+                self.total_tokens_used = tokens_used
+
+            if provider_failed:
+                retry_count += 1
+                console.print(
+                    f"[yellow]Provider connection failed. Retrying without changing the task "
+                    f"(attempt {retry_count}/{max_retries})...[/yellow]"
+                )
+                active_history = self._recovery_history()
+                if retry_count < max_retries:
+                    response_text, tokens_used, provider_failed = self.query_model(active_history, temperature=None)
+                    if tokens_used:
+                        self.total_tokens_used = tokens_used
+                    if provider_failed:
+                        continue
+                else:
+                    break
 
             corrected_response = preprocess_response(response_text)
             current_commands = extract_commands(corrected_response)
