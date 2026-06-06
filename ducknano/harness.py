@@ -12,7 +12,8 @@ from rich.live import Live
 from rich import box
 
 from ducknano.config import (
-    SYSTEM_PROMPT, LLAMA_API_URL, COMPRESSION_THRESHOLD, MAX_CONTEXT_TOKENS, console, WORKSPACE_DIR
+    SYSTEM_PROMPT, PROVIDER_CONFIG, COMPRESSION_THRESHOLD, MAX_CONTEXT_TOKENS,
+    console, WORKSPACE_DIR, provider_endpoint, provider_headers, provider_temperature
 )
 from ducknano.rag import LocalTrigramIndex
 from ducknano.memory import MemoryManager
@@ -32,7 +33,7 @@ class LlamaHarness:
         self.history_manager = HistoryManager(history_path)
 
         # Auto-detect LLM model name
-        self.model_name = os.environ.get("MODEL_NAME")
+        self.model_name = PROVIDER_CONFIG.get("model") or os.environ.get("MODEL_NAME")
         if not self.model_name:
             self.model_name = self._detect_llm_model()
 
@@ -56,6 +57,10 @@ class LlamaHarness:
         self.session_timestamp = int(time.time())
         self.trajectory_log = []
 
+    def reload_provider_settings(self):
+        self.model_name = PROVIDER_CONFIG.get("model") or os.environ.get("MODEL_NAME") or self._detect_llm_model()
+        self.workspace_index.rebuild_index()
+
     def _detect_llm_model(self) -> str:
         # 1. Tenta usar a variável de ambiente se estiver configurada e não for vazia
         env_model = os.environ.get("MODEL_NAME", "").strip()
@@ -64,8 +69,7 @@ class LlamaHarness:
 
         # 2. Caso contrário, tenta consultar o endpoint da API para autodetecção
         try:
-            models_url = LLAMA_API_URL.replace("/chat/completions", "/models")
-            r = requests.get(models_url, timeout=5)
+            r = requests.get(provider_endpoint("/models"), headers=provider_headers(), timeout=5)
             if r.status_code == 200:
                 data = r.json().get("data", [])
                 for m in data:
@@ -109,15 +113,33 @@ class LlamaHarness:
         if clear_persisted:
             self.history_manager.clear()
 
-    def query_model(self, prompt_messages: List[Dict[str, str]], temperature: float = 0.1) -> Tuple[str, int]:
+    def query_model(self, prompt_messages: List[Dict[str, str]], temperature: float = None) -> Tuple[str, int]:
         payload = {
             "model": self.model_name,
             "messages": prompt_messages,
-            "temperature": temperature,
             "stream": True
         }
+        if temperature is not None:
+            payload["temperature"] = temperature
         try:
-            response = requests.post(LLAMA_API_URL, json=payload, timeout=1240, stream=True)
+            response = requests.post(
+                provider_endpoint("/chat/completions"),
+                headers=provider_headers(),
+                json=payload,
+                timeout=1240,
+                stream=True,
+            )
+            if response.status_code >= 400 and "temperature" in payload:
+                error_text = response.text.lower()
+                if "temperature" in error_text or "unsupported" in error_text:
+                    payload.pop("temperature", None)
+                    response = requests.post(
+                        provider_endpoint("/chat/completions"),
+                        headers=provider_headers(),
+                        json=payload,
+                        timeout=1240,
+                        stream=True,
+                    )
             response.raise_for_status()
 
             reasoning_buf = ""
@@ -199,7 +221,7 @@ class LlamaHarness:
 
             return full_response, total_tokens
         except Exception as e:
-            console.print(f"[bold red]Erro ao conectar com llama.cpp: {escape(str(e))}[/bold red]")
+            console.print(f"[bold red]Erro ao conectar com provider OpenAI-compatible: {escape(str(e))}[/bold red]")
             return "", 0
 
     def compress_context(self):
@@ -285,13 +307,14 @@ class LlamaHarness:
         corrected_response = ""
 
         while retry_count < max_retries:
-            temp = 0.1
+            temp = provider_temperature()
             active_history = self.history.copy()
             
             # Apply dynamic temperature and warning constraints if we are in a loop
             total_attempts = self.consecutive_repeats + retry_count
             if total_attempts > 0:
-                temp = min(0.85, 0.1 + 0.20 * total_attempts)
+                if temp is not None:
+                    temp = min(0.85, temp + 0.20 * total_attempts)
                 
                 # Format recent commands to explicitly tell the model what to avoid
                 recent_cmds_str = ", ".join([f"'{c}'" for c in self.recent_commands[-5:]]) if self.recent_commands else "None"

@@ -23,7 +23,7 @@ DuckNano é um agente de IA para terminal que se conecta a qualquer servidor com
 | 📁 **Ferramentas de Workspace** | Lê, escreve e edita arquivos diretamente no diretório de trabalho |
 | 💻 **Execução de Shell** | Roda comandos bash/cmd com timeout de segurança e captura de saída |
 | 🔍 **Busca no Workspace** | Indexa todos os arquivos do projeto com trigramas para buscas rápidas |
-| 🎨 **UI Rica no Terminal** | Animação de intro, painéis coloridos e barra de contexto via `rich` |
+| 🎨 **UI Rica no Terminal** | Dashboard inicial, prompt contextual, setup guiado e painéis coloridos via `rich` |
 
 ---
 
@@ -69,14 +69,32 @@ pip install requests rich
 
 ### Configuração
 
-Por padrão, o DuckNano aponta para `http://localhost:8080/v1/chat/completions`. Para usar um endereço diferente, exporte a variável de ambiente antes de iniciar:
+Por padrão, o DuckNano aponta para `http://localhost:8080/v1`. Para usar um endereço diferente, configure pelo chat:
+
+```text
+/setup
+/providers
+/provider use openai api_key=sk-... model=gpt-4.1
+/provider use openrouter api_key=sk-or-... model=openai/gpt-4.1
+/provider use nvidia api_key=nvapi-...
+/provider use minimax api_key=...
+/provider use kimi api_key=...
+/provider use azure-foundry resource_url=https://SEU-RESOURCE.openai.azure.com api_key=... model=deployment-ou-modelo
+/temperature 0.2
+```
+
+Também é possível usar variáveis de ambiente antes de iniciar:
 
 ```bash
 # Linux / macOS
-export LLAMA_API_URL="http://localhost:11434/v1/chat/completions"
+export OPENAI_BASE_URL="http://localhost:11434/v1"
+export OPENAI_API_KEY="opcional"
+export MODEL_NAME="nome-do-modelo"
 
 # Windows (PowerShell)
-$env:LLAMA_API_URL="http://localhost:11434/v1/chat/completions"
+$env:OPENAI_BASE_URL="http://localhost:11434/v1"
+$env:OPENAI_API_KEY="opcional"
+$env:MODEL_NAME="nome-do-modelo"
 ```
 
 ---
@@ -97,6 +115,19 @@ ducknano.bat
 |---|---|
 | `exit` / `quit` / `sair` | Encerra o agente |
 | `clear` / `limpar` | Reinicia o histórico e limpa a tela |
+| `/setup` | Abre uma UI guiada para configurar provider, API key, modelo e temperature |
+| `/providers` | Lista presets: Local, OpenAI, NVIDIA NIM, OpenRouter, Azure/Foundry, MiniMax e Kimi |
+| `/provider show` | Mostra o provider OpenAI-compatible ativo |
+| `/provider use <preset> api_key=... model=...` | Aplica um provider pre-configurado |
+| `/provider set base_url=... api_key=... model=...` | Configura um provider `/v1` |
+| `/models` | Executa `GET /v1/models` |
+| `/model <id>` | Define o modelo e consulta `GET /v1/models/{id}` |
+| `/temperature <numero\|off>` | Configura `temperature` quando o provider suporta |
+| `/files` | Executa `GET /v1/files` |
+| `/upload <path> [purpose]` | Executa `POST /v1/files` |
+| `/embeddings <texto>` | Executa `POST /v1/embeddings` |
+| `/transcribe <path> [model]` | Executa `POST /v1/audio/transcriptions` |
+| `/image <prompt> [model=...] [size=1024x1024]` | Executa `POST /v1/images/generations` |
 
 ### Ferramentas do Agente (usadas automaticamente pelo LLM)
 

@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 import os
 import time
-import sys
 import argparse
 from rich.panel import Panel
-from rich.markup import escape
 from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 from rich.align import Align
 from rich import box
 
-from ducknano.config import console, WORKSPACE_DIR
+from ducknano.config import console
 from ducknano.harness import LlamaHarness
+from ducknano.slash_commands import handle_slash_command
+from ducknano.ui import prompt_markup, render_dashboard, render_error
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -72,29 +72,14 @@ def show_intro(hist_enabled: bool = False):
             live.update(Align.center(grid))
             time.sleep(0.04)
             
-    # Painel com informações gerais do sistema
-    info_table = Table(show_header=False, box=None, padding=(0, 2))
-    info_table.add_row("[bold #00ffcc]Workspace:[/bold #00ffcc]", f"[white]{os.getcwd()}[/white]")
-    info_table.add_row("[bold #00ffcc]LLM API:[/bold #00ffcc]", f"[white]{os.environ.get('LLAMA_API_URL', 'http://localhost:8080/v1')}[/white]")
-    if hist_enabled:
-        hist_path = os.path.join(WORKSPACE_DIR, ".duck", "history", "session.json")
-        info_table.add_row(
-            "[bold #00ffcc]History:[/bold #00ffcc]",
-            f"[bold #00ff99]ON[/bold #00ff99] [dim]({hist_path})[/dim]"
-        )
-    else:
-        info_table.add_row(
-            "[bold #00ffcc]History:[/bold #00ffcc]",
-            "[dim #888888]OFF (API-managed)[/dim #888888]"
-        )
-    
     console.print(Align.center(Panel(
-        info_table,
-        title="[bold #00ffcc]⚙️ Mini Agent - Duck V3.2[/bold #00ffcc]",
+        "[bold #00ffcc]DuckNano[/bold #00ffcc]\n[dim]OpenAI-compatible terminal agent[/dim]",
+        title="[bold #00ffcc]Mini Agent[/bold #00ffcc]",
         border_style="#00ffcc",
         box=box.ROUNDED,
         expand=False
     )))
+    render_dashboard(hist_enabled=hist_enabled)
     console.print()
 
 def main():
@@ -117,7 +102,7 @@ def main():
     
     while True:
         try:
-            user_input = console.input("[bold #00ffcc]user[/bold #00ffcc] [bold #ff55ff]❯[/bold #ff55ff] ")
+            user_input = console.input(prompt_markup())
             if not user_input.strip():
                 continue
             if user_input.lower() in ("exit", "quit", "sair"):
@@ -128,13 +113,15 @@ def main():
                 show_intro(hist_enabled=hist_enabled)
                 console.print("[green]Contexto ativo reiniciado e tela limpa.[/green]\n")
                 continue
+            if handle_slash_command(user_input, harness):
+                continue
             
             harness.step(user_input)
             
         except KeyboardInterrupt:
             console.print("\n[yellow]Operacao cancelada pelo usuario.[/yellow]")
         except Exception as e:
-            console.print(f"[bold red]Ocorreu um erro inesperado: {escape(str(e))}[/bold red]")
+            render_error(f"Ocorreu um erro inesperado: {e}")
 
 
 if __name__ == "__main__":

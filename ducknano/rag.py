@@ -88,28 +88,30 @@ class LocalTrigramIndex:
         Probes both OAI and native llama.cpp embedding endpoints.
         Sets self.embedding_mode to 'oai', 'native', or None.
         """
-        from ducknano.config import LLAMA_API_URL, EMBEDDINGS_API_URL
+        from ducknano.config import PROVIDER_CONFIG, provider_endpoint, provider_headers
         
         # 1. Try OAI endpoint first
         try:
             # Find a real embedding model name to probe
             model_name = "any"
             try:
-                models_url = LLAMA_API_URL.replace("/chat/completions", "/models")
-                r = requests.get(models_url, timeout=5)
+                r = requests.get(provider_endpoint("/models"), headers=provider_headers(), timeout=5)
                 if r.status_code == 200:
                     for m in r.json().get("data", []):
                         m_id = m.get("id", "")
                         if "embed" in m_id.lower():
                             model_name = m_id
                             break
+                    if PROVIDER_CONFIG.get("embedding_model"):
+                        model_name = PROVIDER_CONFIG["embedding_model"]
                     if model_name == "any" and r.json().get("data"):
                         model_name = r.json()["data"][0].get("id", "any")
             except Exception:
                 pass
 
             response = requests.post(
-                EMBEDDINGS_API_URL,
+                provider_endpoint("/embeddings"),
+                headers=provider_headers(),
                 json={"input": "probe", "model": model_name},
                 timeout=10
             )
@@ -124,9 +126,10 @@ class LocalTrigramIndex:
 
         # 2. Try native llama.cpp embedding endpoint
         try:
-            native_url = LLAMA_API_URL.replace("/v1/chat/completions", "/embedding")
+            native_url = provider_endpoint("/embedding").replace("/v1/embedding", "/embedding")
             response = requests.post(
                 native_url,
+                headers=provider_headers(),
                 json={"content": "probe"},
                 timeout=10
             )
@@ -162,11 +165,12 @@ class LocalTrigramIndex:
             pass
 
     def _fetch_embedding(self, text: str) -> List[float]:
-        from ducknano.config import EMBEDDINGS_API_URL
+        from ducknano.config import provider_endpoint, provider_headers
         try:
             if self.embedding_mode == 'oai':
                 response = requests.post(
-                    EMBEDDINGS_API_URL,
+                    provider_endpoint("/embeddings"),
+                    headers=provider_headers(),
                     json={"input": text, "model": self.embedding_model_name},
                     timeout=60
                 )
@@ -179,6 +183,7 @@ class LocalTrigramIndex:
             elif self.embedding_mode == 'native':
                 response = requests.post(
                     self.native_embedding_url,
+                    headers=provider_headers(),
                     json={"content": text},
                     timeout=60
                 )
