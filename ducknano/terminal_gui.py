@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
+from rich import box
 
 from ducknano.config import (
     PROVIDER_CONFIG,
@@ -94,21 +95,21 @@ class TerminalGUI:
         self.render_home(hist_enabled=hist_enabled, rag_status=rag_status)
 
     def render_home(self, hist_enabled: bool = False, rag_status: str = ""):
-        self.ansi(self.line())
-        self.ansi(self.header())
-        self.ansi(self.line())
+        self.render_header()
         self.render_dashboard(hist_enabled=hist_enabled, rag_status=rag_status)
-        self.ansi(self.command_bar())
-        self.ansi("")
+        console.print(self.command_bar())
+        console.print()
 
-    def header(self) -> str:
-        width = self.width()
-        title = f"{self.BOLD}{self.CYAN}DuckNano{self.RESET}"
-        subtitle = f"{self.MUTED}OpenAI-compatible terminal GUI{self.RESET}"
-        right = f"{self.GREEN}ready{self.RESET}" if PROVIDER_CONFIG.get("api_key") else f"{self.YELLOW}api key missing{self.RESET}"
-        raw = f"  {title}  {subtitle}"
-        pad = max(1, width - self.strip_ansi_len(raw) - self.strip_ansi_len(right) - 2)
-        return f"{raw}{' ' * pad}{right}  "
+    def render_header(self):
+        status = "[bold #00ff99]ready[/bold #00ff99]" if PROVIDER_CONFIG.get("api_key") else "[bold #ffcc00]api key missing[/bold #ffcc00]"
+        grid = Table.grid(expand=True)
+        grid.add_column(ratio=1)
+        grid.add_column(justify="right")
+        grid.add_row(
+            "[bold #00ffcc]DuckNano[/bold #00ffcc] [dim]OpenAI-compatible terminal GUI[/dim]",
+            status,
+        )
+        console.print(Panel(grid, border_style="#30363d", box=box.ROUNDED, padding=(0, 2)))
 
     def card(self, title: str, rows: List[Tuple[str, str]], width: int) -> List[str]:
         inner = width - 2
@@ -129,32 +130,32 @@ class TerminalGUI:
         return lines
 
     def render_dashboard(self, hist_enabled: bool = False, rag_status: str = ""):
-        total = self.width()
-        gap = 2
-        left_w = (total - gap) // 2
-        right_w = total - gap - left_w
-        provider_rows = [
-            ("provider", self.provider_name()),
-            ("model", PROVIDER_CONFIG.get("model") or "auto"),
-            ("api key", self.masked_api_key()),
-            ("temperature", str(PROVIDER_CONFIG.get("temperature", "off"))),
-        ]
-        session_rows = [
-            ("base url", PROVIDER_CONFIG.get("base_url", "")),
-            ("history", "on" if hist_enabled else "off"),
-            ("rag", rag_status.replace("RAG: ", "") if rag_status else "ready"),
-            ("setup", "/setup"),
-            ("help", "/help"),
-        ]
-        left = self.card("Connection", provider_rows, left_w)
-        right = self.card("Session", session_rows, right_w)
-        blank_left = f"{self.PANEL}|{self.RESET}{' ' * (left_w - 2)}{self.PANEL}|{self.RESET}"
-        blank_right = f"{self.PANEL}|{self.RESET}{' ' * (right_w - 2)}{self.PANEL}|{self.RESET}"
-        max_lines = max(len(left), len(right))
-        for index in range(max_lines):
-            a = left[index] if index < len(left) else blank_left
-            b = right[index] if index < len(right) else blank_right
-            self.ansi(f"{a}{' ' * gap}{b}")
+        layout = Table.grid(expand=True, padding=(0, 1))
+        layout.add_column(ratio=1)
+        layout.add_column(ratio=1)
+
+        connection = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+        connection.add_column("key", style="#8b949e", width=13)
+        connection.add_column("value", style="white", overflow="fold")
+        connection.add_row("provider", self.provider_name())
+        connection.add_row("model", PROVIDER_CONFIG.get("model") or "auto")
+        connection.add_row("api key", self.masked_api_key())
+        connection.add_row("temperature", str(PROVIDER_CONFIG.get("temperature", "off")))
+
+        session = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+        session.add_column("key", style="#8b949e", width=13)
+        session.add_column("value", style="white", overflow="fold")
+        session.add_row("base url", PROVIDER_CONFIG.get("base_url", ""))
+        session.add_row("history", "on" if hist_enabled else "off")
+        session.add_row("rag", rag_status.replace("RAG: ", "") if rag_status else "ready")
+        session.add_row("setup", "/setup")
+        session.add_row("help", "/help")
+
+        layout.add_row(
+            Panel(connection, title="Connection", border_style="#30363d", box=box.ROUNDED),
+            Panel(session, title="Session", border_style="#30363d", box=box.ROUNDED),
+        )
+        console.print(layout)
 
     def render_status(self, label: str, message: str, kind: str = "info"):
         color = {
@@ -194,7 +195,7 @@ class TerminalGUI:
         console.print(body, markup=False, highlight=False)
         self.ansi(self.line())
 
-    def command_bar(self) -> str:
+    def command_bar(self):
         chips = [
             ("/setup", "configure"),
             ("/providers", "presets"),
@@ -203,23 +204,16 @@ class TerminalGUI:
             ("clear", "reset"),
             ("exit", "quit"),
         ]
-        lines = []
-        current = ""
-        current_len = 0
-        for cmd, desc in chips:
-            plain = f" {cmd}  {desc}"
-            styled = f"{self.BG_ALT}{self.CYAN} {cmd} {self.RESET}{self.MUTED} {desc}{self.RESET}"
-            sep = "  " if current else ""
-            if current and current_len + len(sep) + len(plain) > self.width():
-                lines.append(current)
-                current = styled
-                current_len = len(plain)
-            else:
-                current += sep + styled
-                current_len += len(sep) + len(plain)
-        if current:
-            lines.append(current)
-        return "\n" + "\n".join(lines)
+        grid = Table.grid(padding=(0, 2))
+        for _ in range(3):
+            grid.add_column()
+        cells = [
+            f"[reverse #30363d][#00ffcc] {cmd} [/][/] [dim]{desc}[/dim]"
+            for cmd, desc in chips
+        ]
+        grid.add_row(*cells[:3])
+        grid.add_row(*cells[3:])
+        return Panel(grid, border_style="#30363d", box=box.ROUNDED, padding=(0, 1))
 
     def prompt_markup(self) -> str:
         provider = escape(PROVIDER_CONFIG.get("provider", "custom"))
