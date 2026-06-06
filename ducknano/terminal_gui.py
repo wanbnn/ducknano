@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
+import os
+import time
+
 from rich.align import Align
 from rich.columns import Columns
+from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -24,6 +28,69 @@ class TerminalGUI:
     This class owns the visual shell: dashboard, prompt, setup forms,
     shortcut panels, status panels, and user-facing error rendering.
     """
+
+    def clear(self):
+        os.system("cls" if os.name == "nt" else "clear")
+
+    def render_intro(self, hist_enabled: bool = False):
+        self.clear()
+        self._render_banner()
+        self.render_home(hist_enabled=hist_enabled)
+
+    def render_home(self, hist_enabled: bool = False):
+        console.print(Align.center(Panel(
+            "[bold #00ffcc]DuckNano[/bold #00ffcc]\n[dim]OpenAI-compatible terminal GUI[/dim]",
+            title="[bold #00ffcc]Terminal GUI[/bold #00ffcc]",
+            border_style="#00ffcc",
+            box=box.ROUNDED,
+            expand=False,
+        )))
+        self.render_dashboard(hist_enabled=hist_enabled)
+        console.print()
+
+    def _render_banner(self):
+        banner_lines = [
+            "@@@@@@@=     -*##-  :                         =:  .###.     .%@@@@@@@@@",
+            "@@@@@@+=     +### :                         -  =: :*##+     :*%@@@@@@@@",
+            "@@@@@@=.=.   +###.+ +. .-                -  -+ :+.-+*#*     --#@@@@@@@@",
+            "@@@@@@+:=+   +###===*: +- .=.::       : .+- -#+:+=*%###    +-=#@@@@@@@@",
+            "@@@@@@*=-:.  =####*+*=:#- =*--=   :  -= -#+.-##=*#%%%%*   -+==*@@@@@@@@",
+            "@@@@@@#+++-  =#####*#*-=-:===++- .=  +-.**--++*###%#%%#.  ==+*#@@@@@@@@",
+            "@@@@@@@*+=-:+*-:.  -*#*#*******+ :*.+=#+#++*##+:   ..=##*:+++*@@@@@@@@@",
+            "@@@@@@@@#+=-+*+        .....:+##-:*-=##+:.        ..=#%#*+-++@@@@@@@@@@",
+            "@@@@@@@@@#+-=*##*:  ...        .:.+.=          =++ =%%%#+-++%@@@@@@@@@@",
+            "@@@@@@@@@@#+=+*##*           ..--=--::.  -+*###%#:-#%%%#++*#@@@@@@@@@@@",
+            "@@@@@@@@@@@*.=+*##*=::-:-=-:.-*#*#%#*##+-.      .+#%%%#*:-@@@@@@@@@@@@@",
+            "@@@@@@@@@@@@=:+**#################%##%%####%%%%%%%%#%%#*==@@@@@@@@@@@@@",
+            "@@@@@@@@@@@@+-=+**#########%##%%%#%%%%%%%%%%%%%%%%%%+#*-*+@@@@@@@@@@@@@",
+            "@@@@@@@%#%@@++:=**#########%%%%%%*=#%%%%%%%%%%%%%%%%+*=-+.       =%@@@@",
+            "@*           =#:++####%####%%#*###%%%###%%%%%%%%%%%#==-#:           #@@",
+            "+            :**.++**=+###%%%**##%%%%#*#%%%%%%%#-+#*-:%*.           :@@",
+            "             .+#*::++-:+##%%%#=+#%#%%*=%%%%%#*-+#*+-:##=             #@",
+            "             .=*#*=.==-. =*#%%*:-***:-####*= .====::-:                 ",
+            "                -++=.-==: .::--:::.--:==-+-.---=-                      ",
+            "                    . :==-:.=+**##+##=#==::..                          ",
+            "                        -:--.   .. ..                                  ",
+        ]
+        colors = [
+            "#330033", "#4d004d", "#660066", "#800080", "#990099", "#b300b3",
+            "#cc00cc", "#e600e6", "#ff00ff", "#d91aff", "#b333ff", "#8c4dff",
+            "#6666ff", "#3d80ff", "#1499ff", "#00ffff", "#00ffcc", "#00ff99",
+            "#00ff66", "#33ff33", "#66ff66",
+        ]
+        with Live(console=console, screen=False, refresh_per_second=20) as live:
+            for step in range(24):
+                text = Text()
+                for y, line in enumerate(banner_lines):
+                    for x, char in enumerate(line):
+                        idx = int((x * 0.25 + y * 0.5 - step * 0.8) % len(colors))
+                        text.append(char, style=colors[idx])
+                    text.append("\n")
+                grid = Table.grid(padding=0)
+                grid.add_column()
+                grid.add_row(text)
+                live.update(Align.center(grid))
+                time.sleep(0.03)
 
     def provider_name(self) -> str:
         key = PROVIDER_CONFIG.get("provider", "custom")
@@ -79,6 +146,9 @@ class TerminalGUI:
             f"[dim]/[/dim][bold #00ffcc]{model}[/bold #00ffcc] "
             f"[{key_state}]>[/] "
         )
+
+    def read_user_input(self) -> str:
+        return console.input(self.prompt_markup())
 
     def render_saved_provider(self):
         table = Table(show_header=False, box=None, padding=(0, 1))

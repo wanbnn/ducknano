@@ -14,12 +14,24 @@ def render_dashboard(hist_enabled: bool = False):
     return terminal_gui.render_dashboard(hist_enabled=hist_enabled)
 
 
+def render_intro(hist_enabled: bool = False):
+    return terminal_gui.render_intro(hist_enabled=hist_enabled)
+
+
+def render_home(hist_enabled: bool = False):
+    return terminal_gui.render_home(hist_enabled=hist_enabled)
+
+
 def render_shortcuts():
     return terminal_gui.render_shortcuts()
 
 
 def prompt_markup() -> str:
     return terminal_gui.prompt_markup()
+
+
+def read_user_input() -> str:
+    return terminal_gui.read_user_input()
 
 
 def render_saved_provider():
