@@ -37,7 +37,11 @@ ducknano/
     ├── config.py       # Configurações globais e system prompt
     ├── harness.py      # Orquestrador: histórico, compressão, chamada ao modelo
     ├── memory.py       # MemoryManager: arquivamento e recuperação de memória (RAG)
+    ├── openai_compatible.py # Cliente para endpoints OpenAI-compatible
     ├── rag.py          # LocalTrigramIndex: indexador e buscador de arquivos
+    ├── slash_commands.py # Comandos / para provider e endpoints
+    ├── terminal_gui.py # GUI de terminal: dashboard, setup, prompt e painéis
+    ├── ui.py           # Compatibilidade para imports antigos da UI
     └── tools.py        # Ferramentas: read_file, write_file, edit_file, run_bash, ...
 ```
 

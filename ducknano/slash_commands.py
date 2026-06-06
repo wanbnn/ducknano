@@ -23,7 +23,7 @@ from ducknano.openai_compatible import (
     transcribe_audio,
     upload_file,
 )
-from ducknano.ui import run_provider_setup
+from ducknano.terminal_gui import terminal_gui
 
 
 HELP_TEXT = """Comandos OpenAI-compatible:
@@ -145,7 +145,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
             return True
 
         if command == "/setup":
-            run_provider_setup(harness)
+            terminal_gui.run_provider_setup(harness)
             return True
 
         if command == "/providers":

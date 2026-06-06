@@ -12,7 +12,7 @@ from rich import box
 from ducknano.config import console
 from ducknano.harness import LlamaHarness
 from ducknano.slash_commands import handle_slash_command
-from ducknano.ui import prompt_markup, render_dashboard, render_error
+from ducknano.terminal_gui import terminal_gui
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -79,7 +79,7 @@ def show_intro(hist_enabled: bool = False):
         box=box.ROUNDED,
         expand=False
     )))
-    render_dashboard(hist_enabled=hist_enabled)
+    terminal_gui.render_dashboard(hist_enabled=hist_enabled)
     console.print()
 
 def main():
@@ -102,7 +102,7 @@ def main():
     
     while True:
         try:
-            user_input = console.input(prompt_markup())
+            user_input = console.input(terminal_gui.prompt_markup())
             if not user_input.strip():
                 continue
             if user_input.lower() in ("exit", "quit", "sair"):
@@ -121,7 +121,7 @@ def main():
         except KeyboardInterrupt:
             console.print("\n[yellow]Operacao cancelada pelo usuario.[/yellow]")
         except Exception as e:
-            render_error(f"Ocorreu um erro inesperado: {e}")
+            terminal_gui.render_error(f"Ocorreu um erro inesperado: {e}")
 
 
 if __name__ == "__main__":
