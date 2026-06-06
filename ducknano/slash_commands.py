@@ -1,16 +1,11 @@
 # -*- coding: utf-8 -*-
-import json
 import os
 import shlex
-
-from rich.markup import escape
-from rich.panel import Panel
 
 from ducknano.config import (
     PROVIDER_CONFIG,
     PROVIDER_PRESETS,
     azure_foundry_base_url,
-    console,
     save_provider_config,
 )
 from ducknano.openai_compatible import (
@@ -57,11 +52,7 @@ def _parse_key_values(args):
 
 
 def _print_json(title: str, data):
-    console.print(Panel(
-        escape(json.dumps(data, indent=2, ensure_ascii=False)[:8000]),
-        title=title,
-        border_style="#00ffcc",
-    ))
+    terminal_gui.render_json(title, data)
 
 
 def _provider_table():
@@ -108,7 +99,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
     try:
         parts = shlex.split(command_line, posix=False)
     except ValueError as e:
-        console.print(f"[red]Comando invalido: {escape(str(e))}[/red]")
+        terminal_gui.render_error(f"Comando invalido: {e}")
         return True
 
     if not parts:
@@ -119,7 +110,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
 
     try:
         if command in {"/help", "/?"}:
-            console.print(Panel(HELP_TEXT, title="Ajuda", border_style="#00ffcc"))
+            terminal_gui.render_help(HELP_TEXT)
             return True
 
         if command == "/setup":
@@ -150,12 +141,12 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
                 return True
             if action == "use":
                 if len(args) < 2:
-                    console.print("[yellow]Use: /provider use <preset> api_key=... model=...[/yellow]")
+                    terminal_gui.render_warning("Use: /provider use <preset> api_key=... model=...")
                     _providers_table()
                     return True
                 preset_key = args[1].strip("\"'").lower()
                 if preset_key not in PROVIDER_PRESETS:
-                    console.print(f"[yellow]Preset desconhecido: {escape(preset_key)}[/yellow]")
+                    terminal_gui.render_warning(f"Preset desconhecido: {preset_key}")
                     _providers_table()
                     return True
                 values, _ = _parse_key_values(args[2:])
@@ -166,7 +157,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
                 _provider_table()
                 note = PROVIDER_PRESETS[preset_key].get("notes")
                 if note:
-                    console.print(f"[dim]{escape(note)}[/dim]")
+                    terminal_gui.render_status("note", note, "info")
                 return True
             if action == "set":
                 values, _ = _parse_key_values(args[1:])
@@ -174,14 +165,14 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
                 updates = {k: v for k, v in values.items() if k in allowed}
                 updates.setdefault("provider", "custom")
                 if not updates:
-                    console.print("[yellow]Use: /provider set base_url=... api_key=... model=...[/yellow]")
+                    terminal_gui.render_warning("Use: /provider set base_url=... api_key=... model=...")
                     return True
                 save_provider_config(updates)
                 if harness:
                     harness.reload_provider_settings()
                 _provider_table()
                 return True
-            console.print("[yellow]Use /provider show, /provider set ou /provider reset.[/yellow]")
+            terminal_gui.render_warning("Use /provider show, /provider set ou /provider reset.")
             return True
 
         if command == "/models":
@@ -190,7 +181,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
 
         if command == "/model":
             if not args:
-                console.print("[yellow]Use: /model <id>[/yellow]")
+                terminal_gui.render_warning("Use: /model <id>")
                 return True
             model_id = args[0].strip("\"'")
             save_provider_config({"model": model_id})
@@ -201,13 +192,13 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
 
         if command == "/temperature":
             if not args:
-                console.print(f"[cyan]temperature = {PROVIDER_CONFIG.get('temperature', 'off')}[/cyan]")
+                terminal_gui.render_status("temperature", f"{PROVIDER_CONFIG.get('temperature', 'off')}", "info")
                 return True
             value = args[0].strip("\"'").lower()
             if value not in {"off", "none", "null"}:
                 float(value)
             save_provider_config({"temperature": value})
-            console.print(f"[green]Temperature configurada: {value}[/green]")
+            terminal_gui.render_status("temperature", f"configured: {value}", "ok")
             return True
 
         if command == "/files":
@@ -216,7 +207,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
 
         if command == "/upload":
             if not args:
-                console.print("[yellow]Use: /upload <path> [purpose][/yellow]")
+                terminal_gui.render_warning("Use: /upload <path> [purpose]")
                 return True
             path = os.path.abspath(args[0].strip("\"'"))
             purpose = args[1].strip("\"'") if len(args) > 1 else "assistants"
@@ -225,14 +216,14 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
 
         if command == "/embeddings":
             if not args:
-                console.print("[yellow]Use: /embeddings <texto>[/yellow]")
+                terminal_gui.render_warning("Use: /embeddings <texto>")
                 return True
             _print_json("POST /v1/embeddings", create_embedding(" ".join(a.strip("\"'") for a in args)))
             return True
 
         if command == "/transcribe":
             if not args:
-                console.print("[yellow]Use: /transcribe <path> [model][/yellow]")
+                terminal_gui.render_warning("Use: /transcribe <path> [model]")
                 return True
             path = os.path.abspath(args[0].strip("\"'"))
             model = args[1].strip("\"'") if len(args) > 1 else "whisper-1"
@@ -241,7 +232,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
 
         if command == "/image":
             if not args:
-                console.print("[yellow]Use: /image <prompt> [model=...] [size=1024x1024][/yellow]")
+                terminal_gui.render_warning("Use: /image <prompt> [model=...] [size=1024x1024]")
                 return True
             values, positionals = _parse_key_values(args)
             prompt = " ".join(positionals)
@@ -251,8 +242,8 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
             )
             return True
 
-        console.print("[yellow]Comando slash desconhecido. Use /help.[/yellow]")
+        terminal_gui.render_warning("Comando slash desconhecido. Use /help.")
         return True
     except Exception as e:
-        console.print(f"[bold red]Erro no comando {escape(command)}: {escape(str(e))}[/bold red]")
+        terminal_gui.render_error(f"Erro no comando {command}: {e}")
         return True

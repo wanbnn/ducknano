@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
+import json
 import os
 import shutil
+import sys
 from typing import List, Tuple
 
+import requests
 from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -145,13 +148,51 @@ class TerminalGUI:
         ]
         left = self.card("Connection", provider_rows, left_w)
         right = self.card("Session", session_rows, right_w)
-        blank_left = " " * left_w
-        blank_right = " " * right_w
+        blank_left = f"{self.PANEL}|{self.RESET}{' ' * (left_w - 2)}{self.PANEL}|{self.RESET}"
+        blank_right = f"{self.PANEL}|{self.RESET}{' ' * (right_w - 2)}{self.PANEL}|{self.RESET}"
         max_lines = max(len(left), len(right))
         for index in range(max_lines):
             a = left[index] if index < len(left) else blank_left
             b = right[index] if index < len(right) else blank_right
             self.ansi(f"{a}{' ' * gap}{b}")
+
+    def render_status(self, label: str, message: str, kind: str = "info"):
+        color = {
+            "info": self.CYAN,
+            "ok": self.GREEN,
+            "warn": self.YELLOW,
+            "error": self.RED,
+        }.get(kind, self.CYAN)
+        label_text = self.fit(label.upper(), 10)
+        msg = self.fit(message, self.width() - 15)
+        self.ansi(f"{self.BG_ALT}{color} {label_text}{self.RESET} {self.WHITE}{msg}{self.RESET}")
+
+    def render_help(self, help_text: str):
+        self.ansi("")
+        self.ansi(self.line())
+        self.ansi(f"  {self.BOLD}{self.CYAN}Commands{self.RESET}  {self.MUTED}slash commands and local controls{self.RESET}")
+        self.ansi(self.line())
+        for raw in help_text.strip().splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            parts = raw.split(maxsplit=1)
+            command = parts[0]
+            rest = parts[1] if len(parts) > 1 else ""
+            self.ansi(f"  {self.CYAN}{self.fit(command, 32)}{self.RESET}{self.MUTED}{rest}{self.RESET}")
+        self.ansi(self.line())
+
+    def render_json(self, title: str, data):
+        body = json.dumps(data, indent=2, ensure_ascii=False)
+        self.ansi("")
+        self.ansi(self.line())
+        self.ansi(f"  {self.BOLD}{self.CYAN}{title}{self.RESET}")
+        self.ansi(self.line())
+        limit = 12000
+        if len(body) > limit:
+            body = body[:limit] + "\n... truncated ..."
+        console.print(body, markup=False, highlight=False)
+        self.ansi(self.line())
 
     def command_bar(self) -> str:
         chips = [
@@ -201,20 +242,147 @@ class TerminalGUI:
         self.ansi(self.line())
 
     def render_provider_menu(self):
-        table = Table(
-            show_header=True,
-            header_style="bold #00ffcc",
-            border_style="#30363d",
-            box=None,
-            padding=(0, 1),
-        )
-        table.add_column("#", justify="right", style="#00ffcc")
-        table.add_column("Preset", style="bold white")
-        table.add_column("Provider")
-        table.add_column("Default model")
+        self.ansi(f"  {self.MUTED}{self.fit('#', 4)} {self.fit('preset', 16)} {self.fit('provider', 34)} default model{self.RESET}")
+        self.ansi(f"  {self.PANEL}{'-' * min(self.width() - 2, 86)}{self.RESET}")
         for index, (key, preset) in enumerate(PROVIDER_PRESETS.items(), start=1):
-            table.add_row(str(index), key, preset.get("name", ""), preset.get("model") or "auto")
-        console.print(table)
+            self.ansi(
+                f"  {self.CYAN}{self.fit(str(index), 4)}{self.RESET} "
+                f"{self.WHITE}{self.fit(key, 16)}{self.RESET} "
+                f"{self.MUTED}{self.fit(preset.get('name', ''), 34)}{self.RESET} "
+                f"{self.WHITE}{self.fit(preset.get('model') or 'auto', 24)}{self.RESET}"
+            )
+
+    def fetch_provider_models(self, base_url: str, api_key: str) -> List[str]:
+        url = f"{base_url.rstrip('/')}/models"
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        response = requests.get(url, headers=headers, timeout=20)
+        response.raise_for_status()
+        data = response.json().get("data", [])
+        model_ids = []
+        for item in data:
+            if isinstance(item, dict) and item.get("id"):
+                model_ids.append(str(item["id"]))
+        return sorted(set(model_ids), key=str.lower)
+
+    def read_key(self) -> str:
+        if os.name == "nt":
+            import msvcrt
+            key = msvcrt.getwch()
+            if key in ("\x00", "\xe0"):
+                code = msvcrt.getwch()
+                return {
+                    "H": "up",
+                    "P": "down",
+                    "K": "left",
+                    "M": "right",
+                    "I": "page_up",
+                    "Q": "page_down",
+                    "G": "home",
+                    "O": "end",
+                }.get(code, "")
+            if key == "\r":
+                return "enter"
+            if key == "\x1b":
+                return "esc"
+            return key
+
+        import termios
+        import tty
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            key = sys.stdin.read(1)
+            if key == "\x1b":
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    return "up"
+                if seq == "[B":
+                    return "down"
+                if seq == "[H":
+                    return "home"
+                if seq == "[F":
+                    return "end"
+                if seq.startswith("["):
+                    extra = sys.stdin.read(1)
+                    if seq + extra == "[5~":
+                        return "page_up"
+                    if seq + extra == "[6~":
+                        return "page_down"
+                return "esc"
+            if key in ("\r", "\n"):
+                return "enter"
+            return key
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def select_model(self, models: List[str], default_model: str = "") -> str:
+        if not models or not sys.stdin.isatty():
+            return ""
+
+        query = ""
+        filtered = models
+        selected = 0
+        if default_model in filtered:
+            selected = filtered.index(default_model)
+        page_size = max(8, min(14, shutil.get_terminal_size((100, 30)).lines - 10))
+
+        while True:
+            if not filtered:
+                selected = 0
+            else:
+                selected = max(0, min(selected, len(filtered) - 1))
+            start = max(0, min(selected - page_size // 2, len(filtered) - page_size))
+            end = min(len(filtered), start + page_size)
+            self.clear()
+            self.ansi(self.line())
+            self.ansi(f"  {self.BOLD}{self.CYAN}Select model{self.RESET}  {self.MUTED}GET /v1/models returned {len(models)} models{self.RESET}")
+            self.ansi(self.line())
+            self.ansi(f"  {self.MUTED}Type to filter. Up/Down selects. Enter confirms. Backspace edits. Esc manual input.{self.RESET}")
+            self.ansi(f"  {self.CYAN}filter{self.RESET} {self.WHITE}{query or '(all models)'}{self.RESET}\n")
+
+            if not filtered:
+                self.ansi(f"   {self.YELLOW}No models match this filter.{self.RESET}")
+
+            for index in range(start, end):
+                model = self.fit(filtered[index], self.width() - 8)
+                if filtered and index == selected:
+                    self.ansi(f"{self.BG_ALT}{self.CYAN}{self.BOLD} > {model}{self.RESET}")
+                else:
+                    self.ansi(f"   {self.WHITE}{model}{self.RESET}")
+
+            self.ansi("")
+            count_text = f"{selected + 1}/{len(filtered)}" if filtered else f"0/{len(models)}"
+            self.ansi(f"  {self.MUTED}{count_text}{self.RESET}")
+            key = self.read_key()
+            if key == "up":
+                selected = max(0, selected - 1)
+            elif key == "down":
+                selected = min(len(filtered) - 1, selected + 1) if filtered else 0
+            elif key == "page_up":
+                selected = max(0, selected - page_size)
+            elif key == "page_down":
+                selected = min(len(filtered) - 1, selected + page_size) if filtered else 0
+            elif key == "home":
+                selected = 0
+            elif key == "end":
+                selected = len(filtered) - 1 if filtered else 0
+            elif key == "enter" and filtered:
+                self.clear()
+                return filtered[selected]
+            elif key == "esc":
+                self.clear()
+                return ""
+            elif key in ("\b", "\x7f", "backspace"):
+                query = query[:-1]
+                filtered = [m for m in models if query.lower() in m.lower()]
+                selected = 0
+            elif len(key) == 1 and key.isprintable():
+                query += key
+                filtered = [m for m in models if query.lower() in m.lower()]
+                selected = 0
 
     def run_provider_setup(self, harness=None):
         self.ansi("")
@@ -255,7 +423,16 @@ class TerminalGUI:
             api_key = current_key
 
         default_model = PROVIDER_CONFIG.get("model") or preset.get("model") or ""
-        model = Prompt.ask("Model or deployment name", default=default_model or "auto")
+        model = ""
+        self.render_status("models", f"Fetching {base_url.rstrip('/')}/models...", "info")
+        try:
+            models = self.fetch_provider_models(base_url, api_key)
+            model = self.select_model(models, default_model=default_model)
+        except Exception as e:
+            self.render_warning(f"Could not load models automatically: {e}")
+
+        if not model:
+            model = Prompt.ask("Model or deployment name", default=default_model or "auto")
         if model == "auto":
             model = ""
 
@@ -274,10 +451,10 @@ class TerminalGUI:
         self.render_saved_provider()
 
     def render_warning(self, message: str):
-        self.ansi(f"{self.YELLOW}{self.BOLD}warning{self.RESET} {message}")
+        self.render_status("warning", message, "warn")
 
     def render_error(self, message: str):
-        console.print(Panel(Text(message, style="bold red"), title="Error", border_style="red"))
+        self.render_status("error", message, "error")
 
 
 terminal_gui = TerminalGUI()

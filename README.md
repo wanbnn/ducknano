@@ -119,7 +119,7 @@ ducknano.bat
 |---|---|
 | `exit` / `quit` / `sair` | Encerra o agente |
 | `clear` / `limpar` | Reinicia o histórico e limpa a tela |
-| `/setup` | Abre uma UI guiada para configurar provider, API key, modelo e temperature |
+| `/setup` | Abre uma UI guiada; busca `GET /v1/models` e permite escolher o modelo com as setas |
 | `/providers` | Lista presets: Local, OpenAI, NVIDIA NIM, OpenRouter, Azure/Foundry, MiniMax e Kimi |
 | `/provider show` | Mostra o provider OpenAI-compatible ativo |
 | `/provider use <preset> api_key=... model=...` | Aplica um provider pre-configurado |
