@@ -5,7 +5,6 @@ import shlex
 
 from rich.markup import escape
 from rich.panel import Panel
-from rich.table import Table
 
 from ducknano.config import (
     PROVIDER_CONFIG,
@@ -66,32 +65,11 @@ def _print_json(title: str, data):
 
 
 def _provider_table():
-    table = Table(show_header=False)
-    table.add_column("Campo", style="bold #00ffcc")
-    table.add_column("Valor")
-    table.add_row("provider", PROVIDER_CONFIG.get("provider", "custom"))
-    table.add_row("base_url", PROVIDER_CONFIG.get("base_url", ""))
-    table.add_row("api_key", "***" if PROVIDER_CONFIG.get("api_key") else "(vazio)")
-    table.add_row("model", PROVIDER_CONFIG.get("model") or "(auto)")
-    table.add_row("embedding_model", PROVIDER_CONFIG.get("embedding_model") or "(auto)")
-    table.add_row("temperature", str(PROVIDER_CONFIG.get("temperature", "off")))
-    console.print(Panel(table, title="Provider", border_style="#00ffcc"))
+    terminal_gui.render_dashboard(hist_enabled=False)
 
 
 def _providers_table():
-    table = Table()
-    table.add_column("Preset", style="bold #00ffcc")
-    table.add_column("Nome")
-    table.add_column("Base URL")
-    table.add_column("Modelo exemplo")
-    for key, preset in PROVIDER_PRESETS.items():
-        table.add_row(
-            key,
-            preset.get("name", ""),
-            preset.get("base_url") or "(resource_url necessario)",
-            preset.get("model") or "(auto)",
-        )
-    console.print(Panel(table, title="Providers Pre-configurados", border_style="#00ffcc"))
+    terminal_gui.render_provider_menu()
 
 
 def _provider_updates_from_preset(preset_key: str, values: dict) -> dict:

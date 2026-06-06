@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
 import os
-import time
+import shutil
+from typing import List, Tuple
 
-from rich.align import Align
-from rich.columns import Columns
-from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
-from rich import box
 
 from ducknano.config import (
     PROVIDER_CONFIG,
@@ -23,74 +20,58 @@ from ducknano.config import (
 
 class TerminalGUI:
     """
-    Rich-based terminal GUI for DuckNano.
+    ANSI-first terminal GUI for DuckNano.
 
-    This class owns the visual shell: dashboard, prompt, setup forms,
-    shortcut panels, status panels, and user-facing error rendering.
+    The goal is to make the terminal feel like a small control surface:
+    compact header, status cards, command chips, and guided setup forms.
     """
+
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    CYAN = "\033[38;5;51m"
+    CYAN_DARK = "\033[38;5;37m"
+    GREEN = "\033[38;5;48m"
+    MAGENTA = "\033[38;5;201m"
+    YELLOW = "\033[38;5;220m"
+    RED = "\033[38;5;203m"
+    WHITE = "\033[38;5;255m"
+    MUTED = "\033[38;5;245m"
+    PANEL = "\033[38;5;238m"
+    BG = "\033[48;5;234m"
+    BG_ALT = "\033[48;5;236m"
 
     def clear(self):
         os.system("cls" if os.name == "nt" else "clear")
 
-    def render_intro(self, hist_enabled: bool = False):
-        self.clear()
-        self._render_banner()
-        self.render_home(hist_enabled=hist_enabled)
+    def width(self) -> int:
+        return max(72, min(120, shutil.get_terminal_size((100, 30)).columns))
 
-    def render_home(self, hist_enabled: bool = False):
-        console.print(Align.center(Panel(
-            "[bold #00ffcc]DuckNano[/bold #00ffcc]\n[dim]OpenAI-compatible terminal GUI[/dim]",
-            title="[bold #00ffcc]Terminal GUI[/bold #00ffcc]",
-            border_style="#00ffcc",
-            box=box.ROUNDED,
-            expand=False,
-        )))
-        self.render_dashboard(hist_enabled=hist_enabled)
-        console.print()
+    def ansi(self, text: str):
+        console.file.write(text + "\n")
+        console.file.flush()
 
-    def _render_banner(self):
-        banner_lines = [
-            "@@@@@@@=     -*##-  :                         =:  .###.     .%@@@@@@@@@",
-            "@@@@@@+=     +### :                         -  =: :*##+     :*%@@@@@@@@",
-            "@@@@@@=.=.   +###.+ +. .-                -  -+ :+.-+*#*     --#@@@@@@@@",
-            "@@@@@@+:=+   +###===*: +- .=.::       : .+- -#+:+=*%###    +-=#@@@@@@@@",
-            "@@@@@@*=-:.  =####*+*=:#- =*--=   :  -= -#+.-##=*#%%%%*   -+==*@@@@@@@@",
-            "@@@@@@#+++-  =#####*#*-=-:===++- .=  +-.**--++*###%#%%#.  ==+*#@@@@@@@@",
-            "@@@@@@@*+=-:+*-:.  -*#*#*******+ :*.+=#+#++*##+:   ..=##*:+++*@@@@@@@@@",
-            "@@@@@@@@#+=-+*+        .....:+##-:*-=##+:.        ..=#%#*+-++@@@@@@@@@@",
-            "@@@@@@@@@#+-=*##*:  ...        .:.+.=          =++ =%%%#+-++%@@@@@@@@@@",
-            "@@@@@@@@@@#+=+*##*           ..--=--::.  -+*###%#:-#%%%#++*#@@@@@@@@@@@",
-            "@@@@@@@@@@@*.=+*##*=::-:-=-:.-*#*#%#*##+-.      .+#%%%#*:-@@@@@@@@@@@@@",
-            "@@@@@@@@@@@@=:+**#################%##%%####%%%%%%%%#%%#*==@@@@@@@@@@@@@",
-            "@@@@@@@@@@@@+-=+**#########%##%%%#%%%%%%%%%%%%%%%%%%+#*-*+@@@@@@@@@@@@@",
-            "@@@@@@@%#%@@++:=**#########%%%%%%*=#%%%%%%%%%%%%%%%%+*=-+.       =%@@@@",
-            "@*           =#:++####%####%%#*###%%%###%%%%%%%%%%%#==-#:           #@@",
-            "+            :**.++**=+###%%%**##%%%%#*#%%%%%%%#-+#*-:%*.           :@@",
-            "             .+#*::++-:+##%%%#=+#%#%%*=%%%%%#*-+#*+-:##=             #@",
-            "             .=*#*=.==-. =*#%%*:-***:-####*= .====::-:                 ",
-            "                -++=.-==: .::--:::.--:==-+-.---=-                      ",
-            "                    . :==-:.=+**##+##=#==::..                          ",
-            "                        -:--.   .. ..                                  ",
-        ]
-        colors = [
-            "#330033", "#4d004d", "#660066", "#800080", "#990099", "#b300b3",
-            "#cc00cc", "#e600e6", "#ff00ff", "#d91aff", "#b333ff", "#8c4dff",
-            "#6666ff", "#3d80ff", "#1499ff", "#00ffff", "#00ffcc", "#00ff99",
-            "#00ff66", "#33ff33", "#66ff66",
-        ]
-        with Live(console=console, screen=False, refresh_per_second=20) as live:
-            for step in range(24):
-                text = Text()
-                for y, line in enumerate(banner_lines):
-                    for x, char in enumerate(line):
-                        idx = int((x * 0.25 + y * 0.5 - step * 0.8) % len(colors))
-                        text.append(char, style=colors[idx])
-                    text.append("\n")
-                grid = Table.grid(padding=0)
-                grid.add_column()
-                grid.add_row(text)
-                live.update(Align.center(grid))
-                time.sleep(0.03)
+    def strip_ansi_len(self, text: str) -> int:
+        length = 0
+        in_escape = False
+        for char in text:
+            if char == "\033":
+                in_escape = True
+            elif in_escape and char == "m":
+                in_escape = False
+            elif not in_escape:
+                length += 1
+        return length
+
+    def fit(self, text: str, width: int) -> str:
+        if len(text) <= width:
+            return text.ljust(width)
+        if width <= 1:
+            return " " * width
+        return text[: max(0, width - 3)] + "..."
+
+    def line(self, char: str = "-") -> str:
+        return f"{self.PANEL}{char * self.width()}{self.RESET}"
 
     def provider_name(self) -> str:
         key = PROVIDER_CONFIG.get("provider", "custom")
@@ -105,92 +86,149 @@ class TerminalGUI:
             return "***"
         return f"{api_key[:4]}...{api_key[-4:]}"
 
+    def render_intro(self, hist_enabled: bool = False):
+        self.clear()
+        self.render_home(hist_enabled=hist_enabled)
+
+    def render_home(self, hist_enabled: bool = False):
+        self.ansi(self.line())
+        self.ansi(self.header())
+        self.ansi(self.line())
+        self.render_dashboard(hist_enabled=hist_enabled)
+        self.ansi(self.command_bar())
+        self.ansi("")
+
+    def header(self) -> str:
+        width = self.width()
+        title = f"{self.BOLD}{self.CYAN}DuckNano{self.RESET}"
+        subtitle = f"{self.MUTED}OpenAI-compatible terminal GUI{self.RESET}"
+        right = f"{self.GREEN}ready{self.RESET}" if PROVIDER_CONFIG.get("api_key") else f"{self.YELLOW}api key missing{self.RESET}"
+        raw = f"  {title}  {subtitle}"
+        pad = max(1, width - self.strip_ansi_len(raw) - self.strip_ansi_len(right) - 2)
+        return f"{raw}{' ' * pad}{right}  "
+
+    def card(self, title: str, rows: List[Tuple[str, str]], width: int) -> List[str]:
+        inner = width - 2
+        title_text = f" {title} "
+        top = f"{self.PANEL}+{title_text}{'-' * max(0, inner - len(title_text))}+{self.RESET}"
+        bottom = f"{self.PANEL}+{'-' * inner}+{self.RESET}"
+        lines = [top]
+        for label, value in rows:
+            label_plain = self.fit(label, 13)
+            value_plain = self.fit(value, inner - 17)
+            content = (
+                f" {self.MUTED}{label_plain}{self.RESET} "
+                f"{self.WHITE}{value_plain}{self.RESET}"
+            )
+            visual_pad = inner - self.strip_ansi_len(content)
+            lines.append(f"{self.PANEL}|{self.RESET}{content}{' ' * max(0, visual_pad)}{self.PANEL}|{self.RESET}")
+        lines.append(bottom)
+        return lines
+
     def render_dashboard(self, hist_enabled: bool = False):
-        provider_table = Table(show_header=False, box=None, padding=(0, 1))
-        provider_table.add_row("[bold #00ffcc]Provider[/bold #00ffcc]", escape(self.provider_name()))
-        provider_table.add_row("[bold #00ffcc]Model[/bold #00ffcc]", escape(PROVIDER_CONFIG.get("model") or "auto"))
-        provider_table.add_row("[bold #00ffcc]API key[/bold #00ffcc]", escape(self.masked_api_key()))
-        provider_table.add_row(
-            "[bold #00ffcc]Temperature[/bold #00ffcc]",
-            escape(str(PROVIDER_CONFIG.get("temperature", "off"))),
-        )
+        total = self.width()
+        gap = 2
+        left_w = (total - gap) // 2
+        right_w = total - gap - left_w
+        provider_rows = [
+            ("provider", self.provider_name()),
+            ("model", PROVIDER_CONFIG.get("model") or "auto"),
+            ("api key", self.masked_api_key()),
+            ("temperature", str(PROVIDER_CONFIG.get("temperature", "off"))),
+        ]
+        session_rows = [
+            ("base url", PROVIDER_CONFIG.get("base_url", "")),
+            ("history", "on" if hist_enabled else "off"),
+            ("setup", "/setup"),
+            ("help", "/help"),
+        ]
+        left = self.card("Connection", provider_rows, left_w)
+        right = self.card("Session", session_rows, right_w)
+        for a, b in zip(left, right):
+            self.ansi(f"{a}{' ' * gap}{b}")
 
-        session_table = Table(show_header=False, box=None, padding=(0, 1))
-        session_table.add_row("[bold #00ffcc]Base URL[/bold #00ffcc]", escape(PROVIDER_CONFIG.get("base_url", "")))
-        session_table.add_row("[bold #00ffcc]History[/bold #00ffcc]", "on" if hist_enabled else "off")
-        session_table.add_row("[bold #00ffcc]Setup[/bold #00ffcc]", "use [bold]/setup[/bold] to configure")
-        session_table.add_row("[bold #00ffcc]Help[/bold #00ffcc]", "use [bold]/help[/bold] for commands")
-
-        left = Panel(provider_table, title="Connection", border_style="#00ffcc", box=box.ROUNDED)
-        right = Panel(session_table, title="Session", border_style="#ff55ff", box=box.ROUNDED)
-        console.print(Columns([left, right], equal=True, expand=True))
-        console.print(self.render_shortcuts())
-
-    def render_shortcuts(self):
-        table = Table.grid(padding=(0, 2))
-        table.add_column(style="bold #00ffcc")
-        table.add_column()
-        table.add_column(style="bold #00ffcc")
-        table.add_column()
-        table.add_row("/setup", "guided provider setup", "/providers", "list presets")
-        table.add_row("/models", "list remote models", "/temperature", "set sampling")
-        table.add_row("clear", "reset context", "exit", "quit")
-        return Panel(Align.center(table), title="Quick Commands", border_style="dim #00ffcc", box=box.ROUNDED)
+    def command_bar(self) -> str:
+        chips = [
+            ("/setup", "configure"),
+            ("/providers", "presets"),
+            ("/models", "models"),
+            ("/temperature", "sampling"),
+            ("clear", "reset"),
+            ("exit", "quit"),
+        ]
+        lines = []
+        current = ""
+        current_len = 0
+        for cmd, desc in chips:
+            plain = f" {cmd}  {desc}"
+            styled = f"{self.BG_ALT}{self.CYAN} {cmd} {self.RESET}{self.MUTED} {desc}{self.RESET}"
+            sep = "  " if current else ""
+            if current and current_len + len(sep) + len(plain) > self.width():
+                lines.append(current)
+                current = styled
+                current_len = len(plain)
+            else:
+                current += sep + styled
+                current_len += len(sep) + len(plain)
+        if current:
+            lines.append(current)
+        return "\n" + "\n".join(lines)
 
     def prompt_markup(self) -> str:
         provider = escape(PROVIDER_CONFIG.get("provider", "custom"))
         model = escape(PROVIDER_CONFIG.get("model") or "auto")
-        key_state = "#00ff99" if PROVIDER_CONFIG.get("api_key") else "#ffaa00"
+        key_color = "#00ff99" if PROVIDER_CONFIG.get("api_key") else "#ffcc00"
         return (
-            f"[dim]{provider}[/dim]"
-            f"[dim]/[/dim][bold #00ffcc]{model}[/bold #00ffcc] "
-            f"[{key_state}]>[/] "
+            f"[dim]{provider}[/dim] "
+            f"[bold #00ffcc]{model}[/bold #00ffcc] "
+            f"[{key_color}]>[/] "
         )
 
     def read_user_input(self) -> str:
         return console.input(self.prompt_markup())
 
     def render_saved_provider(self):
-        table = Table(show_header=False, box=None, padding=(0, 1))
-        table.add_row("[bold #00ffcc]Provider[/bold #00ffcc]", escape(self.provider_name()))
-        table.add_row("[bold #00ffcc]Base URL[/bold #00ffcc]", escape(PROVIDER_CONFIG.get("base_url", "")))
-        table.add_row("[bold #00ffcc]Model[/bold #00ffcc]", escape(PROVIDER_CONFIG.get("model") or "auto"))
-        table.add_row("[bold #00ffcc]API key[/bold #00ffcc]", escape(self.masked_api_key()))
-        table.add_row(
-            "[bold #00ffcc]Temperature[/bold #00ffcc]",
-            escape(str(PROVIDER_CONFIG.get("temperature", "off"))),
+        self.ansi("")
+        self.ansi(self.line())
+        self.ansi(f"  {self.GREEN}{self.BOLD}Provider saved{self.RESET}")
+        self.render_dashboard(hist_enabled=False)
+        self.ansi(self.line())
+
+    def render_provider_menu(self):
+        table = Table(
+            show_header=True,
+            header_style="bold #00ffcc",
+            border_style="#30363d",
+            box=None,
+            padding=(0, 1),
         )
-        console.print(Panel(table, title="Provider saved", border_style="#00ffcc", box=box.ROUNDED))
-
-    def run_provider_setup(self, harness=None):
-        console.print(Panel(
-            "Choose a provider preset, then fill only the fields required for your account.",
-            title="Provider Setup",
-            border_style="#00ffcc",
-            box=box.ROUNDED,
-        ))
-
-        presets = list(PROVIDER_PRESETS.items())
-        table = Table()
-        table.add_column("#", justify="right", style="bold #00ffcc")
-        table.add_column("Preset", style="bold")
-        table.add_column("Name")
+        table.add_column("#", justify="right", style="#00ffcc")
+        table.add_column("Preset", style="bold white")
+        table.add_column("Provider")
         table.add_column("Default model")
-        for index, (key, preset) in enumerate(presets, start=1):
+        for index, (key, preset) in enumerate(PROVIDER_PRESETS.items(), start=1):
             table.add_row(str(index), key, preset.get("name", ""), preset.get("model") or "auto")
         console.print(table)
 
+    def run_provider_setup(self, harness=None):
+        self.ansi("")
+        self.ansi(self.line())
+        self.ansi(f"  {self.BOLD}{self.CYAN}Provider setup{self.RESET}  {self.MUTED}choose a preset and fill account details{self.RESET}")
+        self.ansi(self.line())
+        self.render_provider_menu()
+
+        presets = list(PROVIDER_PRESETS.items())
         choice = Prompt.ask("Provider number or name", default=PROVIDER_CONFIG.get("provider", "local"))
         preset_key = choice.strip().lower()
         if preset_key.isdigit():
             idx = int(preset_key) - 1
             if idx < 0 or idx >= len(presets):
-                console.print("[yellow]Invalid provider number.[/yellow]")
+                self.render_warning("Invalid provider number.")
                 return
             preset_key = presets[idx][0]
 
         if preset_key not in PROVIDER_PRESETS:
-            console.print(f"[yellow]Unknown provider preset: {escape(preset_key)}[/yellow]")
+            self.render_warning(f"Unknown provider preset: {preset_key}")
             return
 
         preset = PROVIDER_PRESETS[preset_key]
@@ -229,8 +267,11 @@ class TerminalGUI:
             harness.reload_provider_settings()
         self.render_saved_provider()
 
+    def render_warning(self, message: str):
+        self.ansi(f"{self.YELLOW}{self.BOLD}warning{self.RESET} {message}")
+
     def render_error(self, message: str):
-        console.print(Panel(Text(message, style="bold red"), title="Error", border_style="red", box=box.ROUNDED))
+        console.print(Panel(Text(message, style="bold red"), title="Error", border_style="red"))
 
 
 terminal_gui = TerminalGUI()

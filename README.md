@@ -23,7 +23,7 @@ DuckNano é um agente de IA para terminal que se conecta a qualquer servidor com
 | 📁 **Ferramentas de Workspace** | Lê, escreve e edita arquivos diretamente no diretório de trabalho |
 | 💻 **Execução de Shell** | Roda comandos bash/cmd com timeout de segurança e captura de saída |
 | 🔍 **Busca no Workspace** | Indexa todos os arquivos do projeto com trigramas para buscas rápidas |
-| 🎨 **UI Rica no Terminal** | Dashboard inicial, prompt contextual, setup guiado e painéis coloridos via `rich` |
+| 🎨 **GUI no Terminal** | Interface ANSI moderna com dashboard, prompt contextual, setup guiado e atalhos |
 
 ---
 
@@ -40,7 +40,7 @@ ducknano/
     ├── openai_compatible.py # Cliente para endpoints OpenAI-compatible
     ├── rag.py          # LocalTrigramIndex: indexador e buscador de arquivos
     ├── slash_commands.py # Comandos / para provider e endpoints
-    ├── terminal_gui.py # GUI principal do terminal: tela inicial, dashboard, setup, prompt e painéis
+    ├── terminal_gui.py # GUI ANSI principal do terminal: dashboard, setup, prompt e componentes
     ├── ui.py           # Compatibilidade para imports antigos da UI
     └── tools.py        # Ferramentas: read_file, write_file, edit_file, run_bash, ...
 ```
