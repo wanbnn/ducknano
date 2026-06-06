@@ -80,6 +80,7 @@ class LocalTrigramIndex:
         self.native_embedding_url = ""
         self.embeddings_cache = {}
         self.embedding_model_name = "any"
+        self.status_message = ""
         
         self.rebuild_index()
 
@@ -208,10 +209,10 @@ class LocalTrigramIndex:
         self.embeddings_available = self._check_embeddings_available()
         if self.embeddings_available:
             self.embeddings_cache = self._load_embedding_cache()
-            console.print(f"[dim blue]RAG: Embedding endpoint available and active (mode: {self.embedding_mode}).[/dim blue]")
+            self.status_message = f"RAG: Embedding endpoint available and active (mode: {self.embedding_mode})."
         else:
             self.embeddings_cache = {}
-            console.print("[dim blue]RAG: Embedding endpoint unavailable. Using high-quality TF-IDF search.[/dim blue]")
+            self.status_message = "RAG: Embedding endpoint unavailable. Using high-quality TF-IDF search."
 
         if not os.path.exists(self.target_dir):
             return

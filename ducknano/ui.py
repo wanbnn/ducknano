@@ -10,16 +10,16 @@ def masked_api_key() -> str:
     return terminal_gui.masked_api_key()
 
 
-def render_dashboard(hist_enabled: bool = False):
-    return terminal_gui.render_dashboard(hist_enabled=hist_enabled)
+def render_dashboard(hist_enabled: bool = False, rag_status: str = ""):
+    return terminal_gui.render_dashboard(hist_enabled=hist_enabled, rag_status=rag_status)
 
 
-def render_intro(hist_enabled: bool = False):
-    return terminal_gui.render_intro(hist_enabled=hist_enabled)
+def render_intro(hist_enabled: bool = False, rag_status: str = ""):
+    return terminal_gui.render_intro(hist_enabled=hist_enabled, rag_status=rag_status)
 
 
-def render_home(hist_enabled: bool = False):
-    return terminal_gui.render_home(hist_enabled=hist_enabled)
+def render_home(hist_enabled: bool = False, rag_status: str = ""):
+    return terminal_gui.render_home(hist_enabled=hist_enabled, rag_status=rag_status)
 
 
 def render_shortcuts():

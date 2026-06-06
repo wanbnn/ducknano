@@ -22,9 +22,12 @@ def main():
     args = parser.parse_args()
     hist_enabled = args.hist == "on"
 
-    terminal_gui.render_intro(hist_enabled=hist_enabled)
+    terminal_gui.clear()
     harness = LlamaHarness(hist_enabled=hist_enabled)
-    terminal_gui.render_home(hist_enabled=hist_enabled)
+    terminal_gui.render_home(
+        hist_enabled=hist_enabled,
+        rag_status=getattr(harness.workspace_index, "status_message", ""),
+    )
 
     while True:
         try:
@@ -38,7 +41,10 @@ def main():
 
             if user_input.lower() in ("clear", "clear_session", "clear_history", "limpar"):
                 harness.init_history(clear_persisted=True)
-                terminal_gui.render_intro(hist_enabled=hist_enabled)
+                terminal_gui.render_intro(
+                    hist_enabled=hist_enabled,
+                    rag_status=getattr(harness.workspace_index, "status_message", ""),
+                )
                 console.print("[green]Contexto ativo reiniciado e tela limpa.[/green]\n")
                 continue
 

@@ -86,15 +86,15 @@ class TerminalGUI:
             return "***"
         return f"{api_key[:4]}...{api_key[-4:]}"
 
-    def render_intro(self, hist_enabled: bool = False):
+    def render_intro(self, hist_enabled: bool = False, rag_status: str = ""):
         self.clear()
-        self.render_home(hist_enabled=hist_enabled)
+        self.render_home(hist_enabled=hist_enabled, rag_status=rag_status)
 
-    def render_home(self, hist_enabled: bool = False):
+    def render_home(self, hist_enabled: bool = False, rag_status: str = ""):
         self.ansi(self.line())
         self.ansi(self.header())
         self.ansi(self.line())
-        self.render_dashboard(hist_enabled=hist_enabled)
+        self.render_dashboard(hist_enabled=hist_enabled, rag_status=rag_status)
         self.ansi(self.command_bar())
         self.ansi("")
 
@@ -125,7 +125,7 @@ class TerminalGUI:
         lines.append(bottom)
         return lines
 
-    def render_dashboard(self, hist_enabled: bool = False):
+    def render_dashboard(self, hist_enabled: bool = False, rag_status: str = ""):
         total = self.width()
         gap = 2
         left_w = (total - gap) // 2
@@ -139,12 +139,18 @@ class TerminalGUI:
         session_rows = [
             ("base url", PROVIDER_CONFIG.get("base_url", "")),
             ("history", "on" if hist_enabled else "off"),
+            ("rag", rag_status.replace("RAG: ", "") if rag_status else "ready"),
             ("setup", "/setup"),
             ("help", "/help"),
         ]
         left = self.card("Connection", provider_rows, left_w)
         right = self.card("Session", session_rows, right_w)
-        for a, b in zip(left, right):
+        blank_left = " " * left_w
+        blank_right = " " * right_w
+        max_lines = max(len(left), len(right))
+        for index in range(max_lines):
+            a = left[index] if index < len(left) else blank_left
+            b = right[index] if index < len(right) else blank_right
             self.ansi(f"{a}{' ' * gap}{b}")
 
     def command_bar(self) -> str:
