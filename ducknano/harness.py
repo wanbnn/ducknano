@@ -3,7 +3,6 @@ import os
 import re
 import time
 import json
-import requests
 from typing import List, Dict, Tuple
 from rich.panel import Panel
 from rich.text import Text
@@ -13,8 +12,9 @@ from rich import box
 
 from ducknano.config import (
     SYSTEM_PROMPT, PROVIDER_CONFIG, COMPRESSION_THRESHOLD, MAX_CONTEXT_TOKENS,
-    console, WORKSPACE_DIR, provider_endpoint, provider_headers, provider_temperature
+    console, WORKSPACE_DIR, provider_temperature
 )
+from ducknano.provider_client import provider_client
 from ducknano.rag import LocalTrigramIndex
 from ducknano.memory import MemoryManager
 from ducknano.tools import parse_and_execute_commands, preprocess_response
@@ -69,9 +69,8 @@ class LlamaHarness:
 
         # 2. Caso contrário, tenta consultar o endpoint da API para autodetecção
         try:
-            r = requests.get(provider_endpoint("/models"), headers=provider_headers(), timeout=5)
-            if r.status_code == 200:
-                data = r.json().get("data", [])
+            data = provider_client.list_models().get("data", [])
+            if data:
                 for m in data:
                     m_id = m.get("id", "")
                     if not m_id:
@@ -87,8 +86,7 @@ class LlamaHarness:
                         return m_id
                 
                 # Fallback caso haja dados mas todos tenham sido filtrados (improvável)
-                if data:
-                    return data[0].get("id", "qwopus3.5-9b-coder")
+                return data[0].get("id", "qwopus3.5-9b-coder")
         except Exception:
             pass
         
@@ -122,24 +120,12 @@ class LlamaHarness:
         if temperature is not None:
             payload["temperature"] = temperature
         try:
-            response = requests.post(
-                provider_endpoint("/chat/completions"),
-                headers=provider_headers(),
-                json=payload,
-                timeout=1240,
-                stream=True,
-            )
+            response = provider_client.chat_completions(payload, stream=True, timeout=1240)
             if response.status_code >= 400 and "temperature" in payload:
                 error_text = response.text.lower()
                 if "temperature" in error_text or "unsupported" in error_text:
                     payload.pop("temperature", None)
-                    response = requests.post(
-                        provider_endpoint("/chat/completions"),
-                        headers=provider_headers(),
-                        json=payload,
-                        timeout=1240,
-                        stream=True,
-                    )
+                    response = provider_client.chat_completions(payload, stream=True, timeout=1240)
             response.raise_for_status()
 
             reasoning_buf = ""

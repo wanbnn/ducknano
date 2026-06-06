@@ -38,8 +38,8 @@ def render_saved_provider():
     return terminal_gui.render_saved_provider()
 
 
-def run_provider_setup(harness=None):
-    return terminal_gui.run_provider_setup(harness=harness)
+def run_provider_setup(harness=None, load_models=None):
+    return terminal_gui.run_provider_setup(harness=harness, load_models=load_models)
 
 
 def render_error(message: str):

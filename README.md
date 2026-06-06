@@ -37,10 +37,11 @@ ducknano/
     ├── config.py       # Configurações globais e system prompt
     ├── harness.py      # Orquestrador: histórico, compressão, chamada ao modelo
     ├── memory.py       # MemoryManager: arquivamento e recuperação de memória (RAG)
-    ├── openai_compatible.py # Cliente para endpoints OpenAI-compatible
+    ├── openai_compatible.py # Wrappers de compatibilidade para provider_client
+    ├── provider_client.py # Cliente centralizado para endpoints OpenAI-compatible /v1
     ├── rag.py          # LocalTrigramIndex: indexador e buscador de arquivos
     ├── slash_commands.py # Comandos / para provider e endpoints
-    ├── terminal_gui.py # GUI ANSI principal do terminal: dashboard, setup, prompt e componentes
+    ├── terminal_gui.py # GUI principal do terminal: dashboard, setup, prompt e componentes
     ├── ui.py           # Compatibilidade para imports antigos da UI
     └── tools.py        # Ferramentas: read_file, write_file, edit_file, run_bash, ...
 ```
@@ -174,6 +175,12 @@ COMPRESSION_THRESHOLD = 12000   # Tokens para acionar a compressão
 ```
 
 A memória persistente é salva em `.duck/memory/` no diretório de trabalho atual.
+
+### Testes
+
+```bash
+python -m unittest discover -s tests
+```
 
 ---
 

@@ -3,10 +3,10 @@ import os
 import math
 import json
 import re
-import requests
 from collections import defaultdict
 from typing import List, Tuple
 from ducknano.config import console
+from ducknano.provider_client import provider_client
 
 def tokenize(text: str) -> List[str]:
     """
@@ -89,57 +89,41 @@ class LocalTrigramIndex:
         Probes both OAI and native llama.cpp embedding endpoints.
         Sets self.embedding_mode to 'oai', 'native', or None.
         """
-        from ducknano.config import PROVIDER_CONFIG, provider_endpoint, provider_headers
+        from ducknano.config import PROVIDER_CONFIG
         
         # 1. Try OAI endpoint first
         try:
             # Find a real embedding model name to probe
             model_name = "any"
             try:
-                r = requests.get(provider_endpoint("/models"), headers=provider_headers(), timeout=5)
-                if r.status_code == 200:
-                    for m in r.json().get("data", []):
-                        m_id = m.get("id", "")
-                        if "embed" in m_id.lower():
-                            model_name = m_id
-                            break
-                    if PROVIDER_CONFIG.get("embedding_model"):
-                        model_name = PROVIDER_CONFIG["embedding_model"]
-                    if model_name == "any" and r.json().get("data"):
-                        model_name = r.json()["data"][0].get("id", "any")
+                data = provider_client.list_models().get("data", [])
+                for m in data:
+                    m_id = m.get("id", "")
+                    if "embed" in m_id.lower():
+                        model_name = m_id
+                        break
+                if PROVIDER_CONFIG.get("embedding_model"):
+                    model_name = PROVIDER_CONFIG["embedding_model"]
+                if model_name == "any" and data:
+                    model_name = data[0].get("id", "any")
             except Exception:
                 pass
 
-            response = requests.post(
-                provider_endpoint("/embeddings"),
-                headers=provider_headers(),
-                json={"input": "probe", "model": model_name},
-                timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if "data" in data and len(data["data"]) > 0 and "embedding" in data["data"][0]:
-                    self.embedding_mode = 'oai'
-                    self.embedding_model_name = model_name
-                    return True
+            data = provider_client.post_embeddings_payload({"input": "probe", "model": model_name}, timeout=10)
+            if "data" in data and len(data["data"]) > 0 and "embedding" in data["data"][0]:
+                self.embedding_mode = 'oai'
+                self.embedding_model_name = model_name
+                return True
         except Exception:
             pass
 
         # 2. Try native llama.cpp embedding endpoint
         try:
-            native_url = provider_endpoint("/embedding").replace("/v1/embedding", "/embedding")
-            response = requests.post(
-                native_url,
-                headers=provider_headers(),
-                json={"content": "probe"},
-                timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list) and len(data) > 0 and "embedding" in data[0]:
-                    self.embedding_mode = 'native'
-                    self.native_embedding_url = native_url
-                    return True
+            data = provider_client.native_embedding("probe", timeout=10)
+            if isinstance(data, list) and len(data) > 0 and "embedding" in data[0]:
+                self.embedding_mode = 'native'
+                self.native_embedding_url = provider_client.native_embedding_url()
+                return True
         except Exception:
             pass
 
@@ -166,34 +150,15 @@ class LocalTrigramIndex:
             pass
 
     def _fetch_embedding(self, text: str) -> List[float]:
-        from ducknano.config import provider_endpoint, provider_headers
         try:
             if self.embedding_mode == 'oai':
-                response = requests.post(
-                    provider_endpoint("/embeddings"),
-                    headers=provider_headers(),
-                    json={"input": text, "model": self.embedding_model_name},
-                    timeout=60
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if "data" in data and len(data["data"]) > 0 and "embedding" in data["data"][0]:
-                        return data["data"][0]["embedding"]
-                else:
-                    console.print(f"[yellow]RAG: Embedding API returned status {response.status_code}: {response.text}[/yellow]")
+                data = provider_client.post_embeddings_payload({"input": text, "model": self.embedding_model_name}, timeout=60)
+                if "data" in data and len(data["data"]) > 0 and "embedding" in data["data"][0]:
+                    return data["data"][0]["embedding"]
             elif self.embedding_mode == 'native':
-                response = requests.post(
-                    self.native_embedding_url,
-                    headers=provider_headers(),
-                    json={"content": text},
-                    timeout=60
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if isinstance(data, list) and len(data) > 0 and "embedding" in data[0]:
-                        return data[0]["embedding"]
-                else:
-                    console.print(f"[yellow]RAG: Embedding API returned status {response.status_code}: {response.text}[/yellow]")
+                data = provider_client.native_embedding(text, timeout=60)
+                if isinstance(data, list) and len(data) > 0 and "embedding" in data[0]:
+                    return data[0]["embedding"]
         except Exception as e:
             console.print(f"[yellow]RAG: Embedding connection error: {e}[/yellow]")
         return []

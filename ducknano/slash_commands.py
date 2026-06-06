@@ -8,15 +8,7 @@ from ducknano.config import (
     azure_foundry_base_url,
     save_provider_config,
 )
-from ducknano.openai_compatible import (
-    create_embedding,
-    generate_image,
-    get_model,
-    list_files,
-    list_models,
-    transcribe_audio,
-    upload_file,
-)
+from ducknano.provider_client import provider_client
 from ducknano.terminal_gui import terminal_gui
 
 
@@ -115,7 +107,10 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
             return True
 
         if command == "/setup":
-            terminal_gui.run_provider_setup(harness)
+            terminal_gui.run_provider_setup(
+                harness,
+                load_models=lambda base_url, api_key: provider_client.model_ids(base_url=base_url, api_key=api_key),
+            )
             return True
 
         if command == "/providers":
@@ -178,14 +173,9 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
 
         if command == "/models":
             if args and args[0].strip("\"'").lower() == "json":
-                _print_json("GET /v1/models", list_models())
+                _print_json("GET /v1/models", provider_client.list_models())
                 return True
-            models_payload = list_models()
-            models = [
-                str(item["id"])
-                for item in models_payload.get("data", [])
-                if isinstance(item, dict) and item.get("id")
-            ]
+            models = provider_client.model_ids()
             model_id = terminal_gui.select_model(
                 sorted(set(models), key=str.lower),
                 default_model=PROVIDER_CONFIG.get("model", ""),
@@ -207,7 +197,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
             save_provider_config({"model": model_id})
             if harness:
                 harness.reload_provider_settings()
-            _print_json(f"GET /v1/models/{model_id}", get_model(model_id))
+            _print_json(f"GET /v1/models/{model_id}", provider_client.get_model(model_id))
             return True
 
         if command == "/temperature":
@@ -222,7 +212,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
             return True
 
         if command == "/files":
-            _print_json("GET /v1/files", list_files())
+            _print_json("GET /v1/files", provider_client.list_files())
             return True
 
         if command == "/upload":
@@ -231,14 +221,14 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
                 return True
             path = os.path.abspath(args[0].strip("\"'"))
             purpose = args[1].strip("\"'") if len(args) > 1 else "assistants"
-            _print_json("POST /v1/files", upload_file(path, purpose))
+            _print_json("POST /v1/files", provider_client.upload_file(path, purpose))
             return True
 
         if command == "/embeddings":
             if not args:
                 terminal_gui.render_warning("Use: /embeddings <texto>")
                 return True
-            _print_json("POST /v1/embeddings", create_embedding(" ".join(a.strip("\"'") for a in args)))
+            _print_json("POST /v1/embeddings", provider_client.embeddings(" ".join(a.strip("\"'") for a in args)))
             return True
 
         if command == "/transcribe":
@@ -247,7 +237,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
                 return True
             path = os.path.abspath(args[0].strip("\"'"))
             model = args[1].strip("\"'") if len(args) > 1 else "whisper-1"
-            _print_json("POST /v1/audio/transcriptions", transcribe_audio(path, model))
+            _print_json("POST /v1/audio/transcriptions", provider_client.transcribe_audio(path, model))
             return True
 
         if command == "/image":
@@ -258,7 +248,7 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
             prompt = " ".join(positionals)
             _print_json(
                 "POST /v1/images/generations",
-                generate_image(prompt, model=values.get("model"), size=values.get("size", "1024x1024")),
+                provider_client.generate_image(prompt, model=values.get("model"), size=values.get("size", "1024x1024")),
             )
             return True
 

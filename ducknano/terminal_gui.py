@@ -3,9 +3,8 @@ import json
 import os
 import shutil
 import sys
-from typing import List, Tuple
+from typing import List
 
-import requests
 from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -34,15 +33,12 @@ class TerminalGUI:
     BOLD = "\033[1m"
     DIM = "\033[2m"
     CYAN = "\033[38;5;51m"
-    CYAN_DARK = "\033[38;5;37m"
     GREEN = "\033[38;5;48m"
-    MAGENTA = "\033[38;5;201m"
     YELLOW = "\033[38;5;220m"
     RED = "\033[38;5;203m"
     WHITE = "\033[38;5;255m"
     MUTED = "\033[38;5;245m"
     PANEL = "\033[38;5;238m"
-    BG = "\033[48;5;234m"
     BG_ALT = "\033[48;5;236m"
 
     def clear(self):
@@ -54,18 +50,6 @@ class TerminalGUI:
     def ansi(self, text: str):
         console.file.write(text + "\n")
         console.file.flush()
-
-    def strip_ansi_len(self, text: str) -> int:
-        length = 0
-        in_escape = False
-        for char in text:
-            if char == "\033":
-                in_escape = True
-            elif in_escape and char == "m":
-                in_escape = False
-            elif not in_escape:
-                length += 1
-        return length
 
     def fit(self, text: str, width: int) -> str:
         if len(text) <= width:
@@ -110,24 +94,6 @@ class TerminalGUI:
             status,
         )
         console.print(Panel(grid, border_style="#30363d", box=box.ROUNDED, padding=(0, 2)))
-
-    def card(self, title: str, rows: List[Tuple[str, str]], width: int) -> List[str]:
-        inner = width - 2
-        title_text = f" {title} "
-        top = f"{self.PANEL}+{title_text}{'-' * max(0, inner - len(title_text))}+{self.RESET}"
-        bottom = f"{self.PANEL}+{'-' * inner}+{self.RESET}"
-        lines = [top]
-        for label, value in rows:
-            label_plain = self.fit(label, 13)
-            value_plain = self.fit(value, inner - 17)
-            content = (
-                f" {self.MUTED}{label_plain}{self.RESET} "
-                f"{self.WHITE}{value_plain}{self.RESET}"
-            )
-            visual_pad = inner - self.strip_ansi_len(content)
-            lines.append(f"{self.PANEL}|{self.RESET}{content}{' ' * max(0, visual_pad)}{self.PANEL}|{self.RESET}")
-        lines.append(bottom)
-        return lines
 
     def render_dashboard(self, hist_enabled: bool = False, rag_status: str = ""):
         layout = Table.grid(expand=True, padding=(0, 1))
@@ -245,20 +211,6 @@ class TerminalGUI:
                 f"{self.MUTED}{self.fit(preset.get('name', ''), 34)}{self.RESET} "
                 f"{self.WHITE}{self.fit(preset.get('model') or 'auto', 24)}{self.RESET}"
             )
-
-    def fetch_provider_models(self, base_url: str, api_key: str) -> List[str]:
-        url = f"{base_url.rstrip('/')}/models"
-        headers = {}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        response = requests.get(url, headers=headers, timeout=20)
-        response.raise_for_status()
-        data = response.json().get("data", [])
-        model_ids = []
-        for item in data:
-            if isinstance(item, dict) and item.get("id"):
-                model_ids.append(str(item["id"]))
-        return sorted(set(model_ids), key=str.lower)
 
     def read_key(self) -> str:
         if os.name == "nt":
@@ -378,7 +330,7 @@ class TerminalGUI:
                 filtered = [m for m in models if query.lower() in m.lower()]
                 selected = 0
 
-    def run_provider_setup(self, harness=None):
+    def run_provider_setup(self, harness=None, load_models=None):
         self.ansi("")
         self.ansi(self.line())
         self.ansi(f"  {self.BOLD}{self.CYAN}Provider setup{self.RESET}  {self.MUTED}choose a preset and fill account details{self.RESET}")
@@ -420,7 +372,7 @@ class TerminalGUI:
         model = ""
         self.render_status("models", f"Fetching {base_url.rstrip('/')}/models...", "info")
         try:
-            models = self.fetch_provider_models(base_url, api_key)
+            models = load_models(base_url, api_key) if load_models else []
             model = self.select_model(models, default_model=default_model)
         except Exception as e:
             self.render_warning(f"Could not load models automatically: {e}")
