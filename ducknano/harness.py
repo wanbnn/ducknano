@@ -185,12 +185,16 @@ class LlamaHarness:
                     except json.JSONDecodeError:
                         continue
 
-                    choice = chunk.get("choices", [{}])[0]
-                    delta = choice.get("delta", {})
-
                     # Accumulate usage if provided in the final chunk
                     if "usage" in chunk:
                         total_tokens = chunk["usage"].get("total_tokens", total_tokens)
+
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+
+                    choice = choices[0]
+                    delta = choice.get("delta", {})
 
                     r_delta = delta.get("reasoning_content") or ""
                     c_delta = delta.get("content") or ""
