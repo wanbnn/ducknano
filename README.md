@@ -124,7 +124,8 @@ ducknano.bat
 | `/provider show` | Mostra o provider OpenAI-compatible ativo |
 | `/provider use <preset> api_key=... model=...` | Aplica um provider pre-configurado |
 | `/provider set base_url=... api_key=... model=...` | Configura um provider `/v1` |
-| `/models` | Executa `GET /v1/models` |
+| `/models` | Busca `GET /v1/models` e abre seletor interativo para trocar modelo |
+| `/models json` | Mostra o JSON bruto de `GET /v1/models` |
 | `/model <id>` | Define o modelo e consulta `GET /v1/models/{id}` |
 | `/temperature <numero\|off>` | Configura `temperature` quando o provider suporta |
 | `/files` | Executa `GET /v1/files` |

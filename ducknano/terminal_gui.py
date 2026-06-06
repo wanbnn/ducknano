@@ -199,7 +199,7 @@ class TerminalGUI:
         chips = [
             ("/setup", "configure"),
             ("/providers", "presets"),
-            ("/models", "models"),
+            ("/models", "select model"),
             ("/temperature", "sampling"),
             ("clear", "reset"),
             ("exit", "quit"),

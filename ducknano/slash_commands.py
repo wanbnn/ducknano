@@ -28,6 +28,7 @@ HELP_TEXT = """Comandos OpenAI-compatible:
 /provider set base_url=http://localhost:8080/v1 api_key=... model=...
 /provider reset
 /models
+/models json
 /model <id>
 /temperature <numero|off>
 /files
@@ -176,7 +177,26 @@ def handle_slash_command(command_line: str, harness=None) -> bool:
             return True
 
         if command == "/models":
-            _print_json("GET /v1/models", list_models())
+            if args and args[0].strip("\"'").lower() == "json":
+                _print_json("GET /v1/models", list_models())
+                return True
+            models_payload = list_models()
+            models = [
+                str(item["id"])
+                for item in models_payload.get("data", [])
+                if isinstance(item, dict) and item.get("id")
+            ]
+            model_id = terminal_gui.select_model(
+                sorted(set(models), key=str.lower),
+                default_model=PROVIDER_CONFIG.get("model", ""),
+            )
+            if not model_id:
+                terminal_gui.render_warning("Nenhum modelo selecionado.")
+                return True
+            save_provider_config({"model": model_id})
+            if harness:
+                harness.reload_provider_settings()
+            terminal_gui.render_status("model", f"selected: {model_id}", "ok")
             return True
 
         if command == "/model":
